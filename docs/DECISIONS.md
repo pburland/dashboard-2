@@ -57,7 +57,7 @@ instead of one JSON blob; `integrations` for rotating tokens;
   Sep 13 run (HR 133 → 153 at equal pace) is ~7% by this method, not the
   15-16% first-mile-to-last-mile rise; it is still over the 5% limit.
 - Heat thresholds in `app/analysis/heat.py` are this system's conservative
-  defaults, not a published standard, and drop 5°F during a return.
+  defaults, not a published standard, and drop 5°F only after a heat illness.
 - Max HR 190 is observed (Sep 1), not tested. No zones exist until a Friel
   30-minute threshold test after the health hold ends.
 
