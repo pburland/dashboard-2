@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
+from typing import Callable
 
 from app.analysis import overreach
 from app.analysis.flags import Flag, Severity
@@ -44,9 +45,14 @@ class WeekVerdict:
 
 
 def validate_week(sessions: list[PlannedSession], history: History,
-                  gate: Gate) -> WeekVerdict:
-    if not gate.prescriptions_allowed:
-        return WeekVerdict([], {}, [Flag("health_hold", Severity.STOP, r) for r in gate.reasons], True)
+                  gate: Gate | Callable[[date], Gate]) -> WeekVerdict:
+    """``gate`` is one Gate for the whole week, or a function giving each
+    day's gate (a week can straddle the end of a return phase)."""
+    gate_for = gate if callable(gate) else (lambda _d: gate)
+    held = [s for s in sessions if not gate_for(s.date).prescriptions_allowed]
+    if held and len(held) == len(sessions):
+        reasons = gate_for(sessions[0].date).reasons if sessions else ()
+        return WeekVerdict([], {}, [Flag("health_hold", Severity.STOP, r) for r in reasons], True)
 
     flags: dict[int, list[Flag]] = {i: [] for i in range(len(sessions))}
     week_flags: list[Flag] = []
@@ -56,6 +62,10 @@ def validate_week(sessions: list[PlannedSession], history: History,
 
     for i, s in enumerate(sessions):
         f = flags[i]
+        gate = gate_for(s.date)
+        if not gate.prescriptions_allowed:
+            f.append(Flag("health_hold", Severity.STOP, f"{s.title} falls inside a health hold."))
+            continue
         if gate.intensity_ceiling and not at_or_below(s.zone, gate.intensity_ceiling):
             f.append(Flag("intensity_cap", Severity.STOP,
                           f"{s.title} reaches {s.zone}; today's cap is {gate.intensity_ceiling} "

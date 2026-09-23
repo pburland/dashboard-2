@@ -96,8 +96,8 @@ def test_cool_morning_is_go():
     assert heat.go_no_go(hours, datetime(2026, 9, 13, 6, 30, tzinfo=ET), 120, kind="long") is None
 
 
-def test_thresholds_tighten_during_return():
+def test_thresholds_tighten_only_after_heat_illness():
     hours = _day({8: (80, 50), 9: (81, 50)})
     start = datetime(2026, 9, 13, 8, 0, tzinfo=ET)
     assert heat.go_no_go(hours, start, 45, kind="easy") is None
-    assert heat.go_no_go(hours, start, 45, kind="easy", returning=True) is not None
+    assert heat.go_no_go(hours, start, 45, kind="easy", after_heat_illness=True) is not None

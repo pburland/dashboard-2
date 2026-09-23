@@ -3,9 +3,9 @@
 Uses the National Weather Service heat index (Rothfusz regression with the
 NWS adjustments) over every forecast hour the session will span. The
 thresholds are this system's own conservative defaults, not a published
-standard, and are stricter for long or hard sessions and during a return
-from illness. The Sep 13, 2026 long run (10:09 start, ~85°F) is a
-NO-GO under these rules.
+standard, and are stricter for long or hard sessions. They tighten further
+only after a heat illness (not after an ordinary illness such as a virus).
+The Sep 13, 2026 long run (10:09 start, ~85°F) is a NO-GO under these rules.
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ THRESHOLDS = {
     "quality": (80.0, 88.0),
     "long": (78.0, 85.0),
 }
-RETURN_OFFSET_F = 5.0     # thresholds drop by this much after illness/heat strain
+HEAT_ILLNESS_OFFSET_F = 5.0   # thresholds drop by this much after a heat illness
 EARLIEST_START_HOUR = 5
 
 
@@ -53,10 +53,10 @@ def _window(hours: list[HourlyWeather], start: datetime, duration_min: float) ->
             if h.time < end and h.time + timedelta(hours=1) > start]
 
 
-def _limits(kind: str, returning: bool) -> tuple[float, float]:
+def _limits(kind: str, after_heat_illness: bool) -> tuple[float, float]:
     caution, nogo = THRESHOLDS[kind]
-    if returning:
-        caution, nogo = caution - RETURN_OFFSET_F, nogo - RETURN_OFFSET_F
+    if after_heat_illness:
+        caution, nogo = caution - HEAT_ILLNESS_OFFSET_F, nogo - HEAT_ILLNESS_OFFSET_F
     return caution, nogo
 
 
@@ -68,8 +68,8 @@ def max_heat_index(hours: list[HourlyWeather], start: datetime, duration_min: fl
 
 
 def go_no_go(hours: list[HourlyWeather], start: datetime, duration_min: float,
-             kind: str = "easy", returning: bool = False) -> Flag | None:
-    caution, nogo = _limits(kind, returning)
+             kind: str = "easy", after_heat_illness: bool = False) -> Flag | None:
+    caution, nogo = _limits(kind, after_heat_illness)
     peak = max_heat_index(hours, start, duration_min)
     if peak < caution:
         return None

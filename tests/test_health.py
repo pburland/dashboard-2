@@ -5,7 +5,7 @@ import pytest
 from app.health.state import (EXIT_CRITERIA, Episode, HoldExitRefused, MorningSignals,
                               Status, begin_return, gate, record_criterion, return_volume)
 
-HOLD = Episode(started_on=date(2026, 9, 13), reason="heat strain + fever")
+HOLD = Episode(started_on=date(2026, 9, 13), reason="viral illness, fever")
 NONE = MorningSignals()
 
 

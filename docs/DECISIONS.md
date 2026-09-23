@@ -60,3 +60,11 @@ instead of one JSON blob; `integrations` for rotating tokens;
   defaults, not a published standard, and drop 5°F during a return.
 - Max HR 190 is observed (Sep 1), not tested. No zones exist until a Friel
   30-minute threshold test after the health hold ends.
+
+## 2026-09-23: fever reclassified as viral
+Patrick recovered from a viral illness; heat strain is no longer treated as
+its cause. The heat-threshold tightening now applies only after a heat
+illness. Sep 13 counts as a valid 12.5 mi base (its HR drift is explained
+by ~85°F heat), so the MCM ladder is 5 -> 10 -> 13.5 -> 15. The 10% long-run
+jump rule and the illness return phase are unchanged: neither depended on
+heat. 16 by Oct 7 is still a STOP (+28%); 16 on Oct 17 is a WARN (+19%).
