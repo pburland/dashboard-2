@@ -68,3 +68,12 @@ illness. Sep 13 counts as a valid 12.5 mi base (its HR drift is explained
 by ~85°F heat), so the MCM ladder is 5 -> 10 -> 13.5 -> 15. The 10% long-run
 jump rule and the illness return phase are unchanged: neither depended on
 heat. 16 by Oct 7 is still a STOP (+28%); 16 on Oct 17 is a WARN (+19%).
+
+## 2026-09-23: 16-mile compromise
+At Patrick's request (outside advice to reach 16 within ~2 weeks), the
+ladder is 6 (Sep 26) -> 13.5 (Oct 3) -> 16 (Oct 10) -> 10 (Oct 17), with a
+15-day taper. Two WARNs are accepted knowingly: Oct 3 is 41% of its week's
+load, and Oct 10 is +18.5% over Oct 3. Oct 3 is conditional on the return
+phase going cleanly; if it drops to 10, 16 on Oct 10 is a +28% STOP and the
+fallback ladder 10 -> 13.5 -> 15 applies. 16 by Oct 7 was not possible
+without back-to-back long runs four days apart.

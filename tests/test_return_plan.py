@@ -23,18 +23,18 @@ def episode() -> Episode:
 WEEK1 = [
     S(date(2026, 9, 23), "run", "Easy return run", 27, distance_mi=2.5),
     S(date(2026, 9, 24), "strength", "Upper body", 45, zone="Z1"),
-    S(date(2026, 9, 25), "run", "Easy run", 33, distance_mi=3.0),
-    S(date(2026, 9, 26), "run", "Long run (easy)", 57, distance_mi=5.0, is_long=True),
-    S(date(2026, 9, 27), "swim", "Easy swim", 25),
+    S(date(2026, 9, 25), "run", "Easy run", 38, distance_mi=3.5),
+    S(date(2026, 9, 26), "run", "Long run (easy)", 66, distance_mi=6.0, is_long=True),
+    S(date(2026, 9, 27), "swim", "Easy swim", 40),
 ]
 WEEK2 = [
     S(date(2026, 9, 28), "strength", "Lower (light)", 40, zone="Z1", heavy_lower=True),
-    S(date(2026, 9, 29), "run", "Easy run", 38, distance_mi=3.5),
+    S(date(2026, 9, 29), "run", "Easy run", 33, distance_mi=3.0),
     S(date(2026, 9, 30), "run", "Easy run", 33, distance_mi=3.0),
     S(date(2026, 9, 30), "strength", "Upper body", 45, zone="Z1"),
-    S(date(2026, 10, 1), "run", "Easy run", 38, distance_mi=3.5),
-    S(date(2026, 10, 3), "run", "Long run (easy)", 112, distance_mi=10.0, is_long=True),
-    S(date(2026, 10, 4), "bike", "Easy spin", 45),
+    S(date(2026, 10, 1), "run", "Easy run", 33, distance_mi=3.0),
+    S(date(2026, 10, 3), "run", "Long run (run/walk)", 150, distance_mi=13.5, is_long=True),
+    S(date(2026, 10, 4), "bike", "Easy spin", 60),
 ]
 
 
@@ -56,11 +56,14 @@ def daily_gate(d: date):
     return gate(episode(), MorningSignals(), d)
 
 
-def test_week2_passes_with_no_flags():
-    # The return phase ends Oct 2, so Saturday's 10 mi is checked against the
-    # normal rules, not the 8.75 mi return cap.
+def test_week2_compromise_carries_one_known_warning():
+    # The return phase ends Oct 2, so Saturday's 13.5 is checked against the
+    # normal rules, not the 8.75 mi return cap. It passes the jump rule (+8%)
+    # but is 41% of the week's load: a WARN accepted to reach 16 on Oct 10.
     v = validate_week(WEEK2, HIST, daily_gate)
-    assert all(fl == [] for fl in v.flags.values()), v.flags
+    long_flags = v.flags[5]
+    assert [(f.kind, f.severity) for f in long_flags] == [("session_load_share", Severity.WARN)]
+    assert all(fl == [] for i, fl in v.flags.items() if i != 5)
     assert v.week_flags == []
 
 
@@ -77,13 +80,11 @@ def test_sixteen_miles_by_oct7_is_stopped():
     assert round(f.data["jump"], 2) == 0.28
 
 
-def test_ladder_to_the_marathon():
-    runs = RUNS + [(date(2026, 9, 26), 5.0), (date(2026, 10, 3), 10.0)]
-    # Oct 10: 13.5 is +8% over the 12.5 longest: passes.
-    assert long_run_jump(13.5, date(2026, 10, 10), runs) is None
-    runs.append((date(2026, 10, 10), 13.5))
-    # Oct 17: 15 is +11% over 13.5 (WARN); 16 is +19% (WARN, just under STOP).
-    fifteen = long_run_jump(15.0, date(2026, 10, 17), runs)
-    sixteen = long_run_jump(16.0, date(2026, 10, 17), runs)
-    assert fifteen.severity is Severity.WARN and round(fifteen.data["jump"], 2) == 0.11
-    assert sixteen.severity is Severity.WARN and sixteen.data["jump"] == 0.185
+def test_sixteen_on_oct10_needs_13_5_on_oct3():
+    base = RUNS + [(date(2026, 9, 26), 6.0)]
+    ok = long_run_jump(16.0, date(2026, 10, 10), base + [(date(2026, 10, 3), 13.5)])
+    assert ok.severity is Severity.WARN and ok.data["jump"] == 0.185
+    # Fallback: if Oct 3 is only 10, 16 on Oct 10 is +28% over 12.5 -> STOP.
+    fallback = long_run_jump(16.0, date(2026, 10, 10), base + [(date(2026, 10, 3), 10.0)])
+    assert fallback.severity is Severity.STOP
+    assert long_run_jump(13.5, date(2026, 10, 3), base) is None
