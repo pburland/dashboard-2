@@ -66,7 +66,15 @@ PERIODS: dict[str, Period] = {
         "AA", (0, 2), "Z2",
         "Unstructured, low; recovery from the previous race.",
     ),
-    # Not a Friel period: the return-to-training block the health hold
+    # Not Friel periods: the days a health hold removed, and the
+    # return-to-training block it inserts when the hold ends.
+    "hold": Period(
+        "hold", "Health hold",
+        (), ("all prescribed training",),
+        None, (0, 0), "Z1",
+        "No prescriptions until the exit criteria are recorded.",
+    ),
+    # The return-to-training block the health hold
     # inserts when a hold ends. Rebasing starts from here.
     "return": Period(
         "return", "Return to training",
