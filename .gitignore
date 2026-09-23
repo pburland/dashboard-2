@@ -1,0 +1,27 @@
+# Secrets — never commit. All credentials live in Railway environment variables.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+garmin_tokens.json
+**/garmin_tokens.json
+
+# Personal data exports — upload through the app, never commit
+*.csv
+*.fit
+*.db
+*.sqlite
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
