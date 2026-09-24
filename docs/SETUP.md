@@ -7,7 +7,8 @@ secrets go only into Railway → Variables.
 ## 1. Garmin token (done once on your Mac)
 
 Already done if `~/garmin-login/garmin_tokens.json` exists and
-`python login.py` printed your name. To refresh it later:
+`python login.py` printed your name. Run it again right before step 3 so
+Railway gets a fresh token:
 
 ```bash
 cd ~/garmin-login && source .venv/bin/activate && python login.py
@@ -18,7 +19,7 @@ login methods and the library falls through to one that works.
 
 ## 2. Supabase (database)
 
-1. supabase.com → **New project**. Name: `training`. Region: East US.
+1. supabase.com → **New project**. Name: `training`. Region: East US (North Virginia).
    Set a database password and save it in your password manager.
 2. When it's ready: **Connect** (top of the project page) → **Session pooler**
    → copy the URI. Replace `[YOUR-PASSWORD]` with the password from step 1.
@@ -30,8 +31,12 @@ login methods and the library falls through to one that works.
 ## 3. Railway (the server)
 
 1. railway.app → sign in with GitHub → **New Project** → **Deploy from
-   GitHub repo** → `pburland/dashboard-2`. When asked, pick the branch
-   this work is on (or `main` once merged).
+   GitHub repo** → `pburland/dashboard-2`. If Railway asks for access to
+   the repo, grant it.
+   Then service → **Settings → Source → Branch**: choose
+   `claude/training-system-handoff-awyg4h` (until it's merged to `main`).
+   The first deploy may fail before step 3.3 is done: that's expected, it
+   has no database address yet.
 2. Service → **Settings → Networking → Generate Domain**. Copy the
    `https://…up.railway.app` address.
 3. Service → **Variables** → add each of these:
@@ -52,9 +57,12 @@ login methods and the library falls through to one that works.
 
 1. cloud.ouraring.com → sign in → **API Applications** (developer section)
    → **New application**.
-2. Redirect URI: `https://<your-domain>/oauth/oura/callback` (exactly).
-3. Add `OURA_CLIENT_ID` and `OURA_CLIENT_SECRET` to Railway Variables and
-   wait for the redeploy.
+   (You already have one: open it and edit it instead.)
+2. Redirect URI: `https://<your-domain>/oauth/oura/callback` exactly:
+   `https`, no trailing slash, nothing after `callback`.
+3. **Regenerate the client secret** (the old one was shared in chat), then
+   add `OURA_CLIENT_ID` and the new `OURA_CLIENT_SECRET` to Railway
+   Variables and wait for the redeploy.
 4. In your browser open
    `https://<your-domain>/oauth/oura/start?key=<ADMIN_TOKEN>` and approve.
    **Success:** "Oura connected."
@@ -65,7 +73,8 @@ login methods and the library falls through to one that works.
 curl -s -H "X-Admin-Token: <ADMIN_TOKEN>" https://<your-domain>/admin/diagnostics
 ```
 
-Each source reports `"ok": true` or says exactly what's missing. The
+Paste that into Terminal with your real token and domain. Each source
+reports `"ok": true` or says exactly what's missing. The
 important one is `garmin`: it proves Railway can renew your Garmin token
 without logging in. If it fails, send the `garmin` part of the output
 (it contains no secrets).
