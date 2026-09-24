@@ -33,16 +33,33 @@ def apply(conn: psycopg.Connection, files: list[Path]) -> list[str]:
     return applied
 
 
+MIGRATION_LOCK = 7_310_2026   # arbitrary advisory-lock key for this app
+
+
+def files(seed: bool = True) -> list[Path]:
+    out = sorted((ROOT / "db" / "migrations").glob("*.sql"))
+    if seed:
+        out += sorted((ROOT / "db" / "seed").glob("*.sql"))
+    return out
+
+
+def run(url: str, seed: bool = True) -> list[str]:
+    """Apply pending files. Safe to call from several processes at once:
+    an advisory lock makes the second caller wait, then find nothing to do."""
+    with psycopg.connect(url, autocommit=True, connect_timeout=15) as conn:
+        conn.execute("select pg_advisory_lock(%s)", (MIGRATION_LOCK,))
+        try:
+            return apply(conn, files(seed))
+        finally:
+            conn.execute("select pg_advisory_unlock(%s)", (MIGRATION_LOCK,))
+
+
 def main(argv: list[str]) -> int:
     url = load_settings().db_url
     if not url:
         print("SUPABASE_DB_URL is not set", file=sys.stderr)
         return 1
-    files = sorted((ROOT / "db" / "migrations").glob("*.sql"))
-    if "--seed" in argv:
-        files += sorted((ROOT / "db" / "seed").glob("*.sql"))
-    with psycopg.connect(url, autocommit=True) as conn:
-        applied = apply(conn, files)
+    applied = run(url, seed="--seed" in argv)
     print("applied: " + (", ".join(applied) if applied else "nothing (up to date)"))
     return 0
 

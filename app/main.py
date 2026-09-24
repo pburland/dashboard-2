@@ -8,6 +8,8 @@ included; this one serves only explicit routes.
 from __future__ import annotations
 
 import hmac
+import logging
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -15,7 +17,31 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from app import clock
 from app.config import MissingConfig, load_settings
 
-app = FastAPI(title="Training system", docs_url=None, redoc_url=None, openapi_url=None)
+log = logging.getLogger("training")
+MIGRATIONS: dict = {"status": "not run"}
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Bring the database schema up to date before serving. Railway's
+    pre-deploy hook is not relied on: the server does it itself."""
+    from scripts import migrate
+    url = load_settings().db_url
+    if not url:
+        MIGRATIONS.update(status="skipped", reason="SUPABASE_DB_URL not set")
+    else:
+        try:
+            applied = migrate.run(url, seed=True)
+            MIGRATIONS.update(status="ok", applied=applied)
+            log.warning("migrations applied: %s", applied or "none (up to date)")
+        except Exception as e:  # keep serving so /healthz can report it
+            MIGRATIONS.update(status="error", error=f"{type(e).__name__}: {e}")
+            log.exception("migrations failed")
+    yield
+
+
+app = FastAPI(title="Training system", docs_url=None, redoc_url=None, openapi_url=None,
+              lifespan=lifespan)
 
 
 def _check_token(supplied: str | None) -> None:
@@ -32,7 +58,9 @@ def require_admin(x_admin_token: str | None = Header(default=None)) -> None:
 
 @app.get("/healthz")
 def healthz() -> dict:
-    return {"ok": True, "today": clock.today().isoformat(), "now": clock.now().isoformat()}
+    return {"ok": True, "today": clock.today().isoformat(), "now": clock.now().isoformat(),
+            "database": {k: v for k, v in MIGRATIONS.items() if k != "applied"}
+                        | {"applied_now": len(MIGRATIONS.get("applied", []))}}
 
 
 @app.get("/api/state", dependencies=[Depends(require_admin)])
