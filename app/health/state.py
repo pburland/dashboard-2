@@ -151,7 +151,7 @@ def gate(episode: Episode | None, signals: MorningSignals, as_of: date) -> Gate:
     if st is Status.RETURN:
         vol = return_volume(episode, as_of)
         return Gate(st, True, "Z2", vol, False, (
-            f"return to training until {episode.return_ends_on}: {int(vol * 100)}% volume, Z2 only",
+            f"return to training until {episode.return_ends_on:%b %-d}: {int(vol * 100)}% volume, Z2 only",
             f"long run capped at {int(RETURN_LONG_RUN_CAP * 100)}% of pre-hold longest",
         ))
     if st is Status.CAUTION:

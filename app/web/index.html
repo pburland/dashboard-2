@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Training">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/icon-180.png">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/app.css">
+<title>Training</title>
+</head>
+<body>
+<div id="signin" class="signin" hidden>
+  <h1>Training</h1>
+  <p class="muted">Paste your admin token once. It's saved on this phone only.</p>
+  <input id="tok" type="password" autocomplete="off" placeholder="Admin token">
+  <div class="err" id="tokerr"></div>
+  <button id="tokbtn">Sign in</button>
+</div>
+
+<div class="wrap" id="app" hidden>
+  <header>
+    <div>
+      <h1>Patrick</h1>
+      <div class="sub" id="phase"></div>
+    </div>
+    <div class="date"><span id="hdrdate"></span><br><span class="muted">server clock · ET</span></div>
+  </header>
+
+  <section class="goals" id="goals" aria-label="Races"></section>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="today">Today</button>
+    <button role="tab" aria-selected="false" data-tab="plan">Plan</button>
+    <button role="tab" aria-selected="false" data-tab="trends">Trends</button>
+  </nav>
+
+  <main id="today"><div class="loading">Loading…</div></main>
+  <main id="plan" hidden><div class="loading">Loading…</div></main>
+  <main id="trends" hidden><div class="loading">Loading…</div></main>
+  <div class="sync" id="sync"></div>
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>

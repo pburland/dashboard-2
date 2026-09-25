@@ -58,6 +58,10 @@ def build(conn, today: date, next_days: int = 4) -> dict:
             act_flags.setdefault(f["subject_id"], []).append(
                 {"kind": f["kind"], "severity": f["severity"], "message": f["message"]})
 
+    races = conn.execute(
+        "select name, race_date, distance, priority, goal_time::text as goal_time, "
+        "stretch_time::text as stretch_time, status, decision_date from races "
+        "where race_date >= %s order by priority", (today,)).fetchall()
     last = conn.execute("select kind, finished_at, ok from sync_runs where finished_at is not null "
                         "order by finished_at desc limit 1").fetchone()
     rec = conn.execute("select * from recovery where day <= %s order by day desc limit 1", (today,)).fetchone()
@@ -79,5 +83,46 @@ def build(conn, today: date, next_days: int = 4) -> dict:
             "mi": round((a["distance_m"] or 0) / MI, 2), "min": round((a["duration_s"] or 0) / 60),
             "avg_hr": a["avg_hr"], "decoupling": a["decoupling"], "load": a["load_trimp"],
             "flags": act_flags.get(a["id"], [])} for a in recent],
+        "races": [r | {"days_until": (r["race_date"] - today).days} for r in races],
         "last_sync": last,
+    }
+
+
+def plan(conn, start: date, days: int) -> list[dict]:
+    """Planned sessions day by day, with matched actuals, for the Plan tab."""
+    rows = conn.execute(
+        """select w.*, a.distance_m as act_m, a.avg_hr as act_hr, a.duration_s as act_s
+           from planned_workouts w left join activities a on a.id = w.activity_id
+           where w.plan_date between %s and %s and w.status <> 'superseded'
+           order by w.plan_date, w.id""", (start, start + timedelta(days=days - 1))).fetchall()
+    out: dict[date, list] = {start + timedelta(days=i): [] for i in range(days)}
+    for r in rows:
+        s = _session(r)
+        if r["act_m"] is not None:
+            s["actual"] = {"mi": round(r["act_m"] / MI, 2), "avg_hr": r["act_hr"],
+                           "min": round((r["act_s"] or 0) / 60)}
+        out[r["plan_date"]].append(s)
+    return [{"date": d, "sessions": v} for d, v in out.items()]
+
+
+def trends(conn, today: date, weeks: int = 10) -> dict:
+    """Weekly run miles (actual vs planned) and bench estimated 1RM by session."""
+    start = today - timedelta(days=today.weekday() + 7 * (weeks - 1))
+    actual = {r["wk"]: r["mi"] for r in conn.execute(
+        """select date_trunc('week', local_date)::date as wk, sum(distance_m) / %s as mi
+           from activities where sport = 'run' and local_date >= %s group by 1""", (MI, start)).fetchall()}
+    planned = {r["wk"]: r["mi"] for r in conn.execute(
+        """select date_trunc('week', plan_date)::date as wk, sum(distance_mi) as mi
+           from planned_workouts where sport = 'run' and plan_date >= %s and status <> 'superseded'
+           group by 1""", (start,)).fetchall()}
+    wk = [start + timedelta(weeks=i) for i in range(weeks + 1)]
+    bench = conn.execute(
+        """select performed_on as day, max(weight_lb * (1 + reps / 30.0)) as e1rm, max(weight_lb) as top
+           from strength_sets where exercise ilike 'bench press%%' and not excluded
+             and coalesce(set_type, 'normal') not in ('warmup') and reps between 1 and 12
+           group by 1 order by 1""").fetchall()
+    return {
+        "weekly_run_mi": [{"week": w, "actual": round(actual.get(w) or 0, 1),
+                           "planned": round(planned[w], 1) if w in planned else None} for w in wk],
+        "bench": [{"day": b["day"], "e1rm": round(b["e1rm"], 1), "top": b["top"]} for b in bench],
     }

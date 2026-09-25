@@ -9,10 +9,13 @@ from __future__ import annotations
 
 import hmac
 import logging
+from datetime import timedelta
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 
 from app import clock
 from app.config import MissingConfig, load_settings
@@ -45,6 +48,28 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="Training system", docs_url=None, redoc_url=None, openapi_url=None,
               lifespan=lifespan)
+
+
+WEB = Path(__file__).parent / "web"
+app.mount("/static", StaticFiles(directory=WEB), name="static")
+
+
+@app.get("/", include_in_schema=False)
+def index():
+    return FileResponse(WEB / "index.html", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/sw.js", include_in_schema=False)
+def service_worker():
+    # Served from the root so it controls the whole app; never cached, so
+    # updates reach the phone.
+    return FileResponse(WEB / "sw.js", media_type="text/javascript",
+                        headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
+
+
+@app.get("/manifest.webmanifest", include_in_schema=False)
+def manifest():
+    return FileResponse(WEB / "manifest.webmanifest", media_type="application/manifest+json")
 
 
 def _check_token(supplied: str | None) -> None:
@@ -112,6 +137,21 @@ def api_today() -> dict:
             return today_view.build(conn, clock.today())
     except MissingConfig as e:
         raise HTTPException(503, str(e))
+
+
+@app.get("/api/plan", dependencies=[Depends(require_admin)])
+def api_plan(days: int = Query(default=14, ge=1, le=60)) -> list:
+    from app import db, today as view
+    with db.connect() as conn:
+        t = clock.today()
+        return view.plan(conn, t - timedelta(days=t.weekday()), days)
+
+
+@app.get("/api/trends", dependencies=[Depends(require_admin)])
+def api_trends() -> dict:
+    from app import db, today as view
+    with db.connect() as conn:
+        return view.trends(conn, clock.today())
 
 
 @app.post("/admin/sync", dependencies=[Depends(require_admin)])
