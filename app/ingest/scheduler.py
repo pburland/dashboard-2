@@ -14,7 +14,7 @@ import logging
 import os
 import threading
 import time as _time
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 
 from app import clock, db
 from app.ingest import runner
@@ -25,8 +25,14 @@ BACKFILL_DAYS = 365
 TICK_S = 60
 
 
+CATCH_UP_HOURS = 3
+
+
 def due(kind: str, at: time, now: datetime, ran_today: set[str]) -> bool:
-    return now.time() >= at and kind not in ran_today
+    """Due from its scheduled time until CATCH_UP_HOURS later, once a day.
+    A restart at 9 PM must not run the 05:30 morning check."""
+    start = datetime.combine(now.date(), at, tzinfo=now.tzinfo)
+    return start <= now < start + timedelta(hours=CATCH_UP_HOURS) and kind not in ran_today
 
 
 def _ran_today(conn, today) -> set[str]:
