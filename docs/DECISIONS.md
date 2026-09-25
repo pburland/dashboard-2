@@ -77,3 +77,12 @@ load, and Oct 10 is +18.5% over Oct 3. Oct 3 is conditional on the return
 phase going cleanly; if it drops to 10, 16 on Oct 10 is a +28% STOP and the
 fallback ladder 10 -> 13.5 -> 15 applies. 16 by Oct 7 was not possible
 without back-to-back long runs four days apart.
+
+## 2026-09-24: ingest runs inside the web service
+The scheduler is a background thread in the one Railway service (nightly
+03:00, morning 05:30 ET, one-time 365-day backfill) rather than separate
+Railway cron services: one service, one set of variables. Runs are recorded
+in `sync_runs`; an advisory lock stops overlaps; a failed backfill retries at
+most every 6 hours. Each source is isolated, so one failing provider never
+blocks the others. Load is HR-based TRIMP using the Oura resting-HR baseline
+(median of the 28 days before Sep 13) and the observed max HR.

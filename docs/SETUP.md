@@ -78,3 +78,18 @@ reports `"ok": true` or says exactly what's missing. The
 important one is `garmin`: it proves Railway can renew your Garmin token
 without logging in. If it fails, send the `garmin` part of the output
 (it contains no secrets).
+
+## 6. Data sync (automatic)
+
+On its first start with the database connected, the server backfills 12
+months of Garmin activities (with per-mile laps), all Hevy sets and Oura
+recovery. Then it syncs nightly at 3:00 AM and again at 5:30 AM with the
+heat and readiness checks. To see what it has done:
+
+```bash
+read -s TOKEN
+curl -s -H "X-Admin-Token: $TOKEN" https://dashboard-2-production-6f5f.up.railway.app/admin/sync/status | python3 -m json.tool
+```
+
+Today's view as the phone app will see it: `/api/today` (same header).
+To force a sync now: `curl -s -X POST -H "X-Admin-Token: $TOKEN" ".../admin/sync?days=3"`.

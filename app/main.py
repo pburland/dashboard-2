@@ -37,6 +37,9 @@ async def lifespan(_app: FastAPI):
         except Exception as e:  # keep serving so /healthz can report it
             MIGRATIONS.update(status="error", error=f"{type(e).__name__}: {e}")
             log.exception("migrations failed")
+    if MIGRATIONS.get("status") == "ok":
+        from app.ingest import scheduler
+        MIGRATIONS["scheduler"] = "on" if scheduler.start() else "off"
     yield
 
 
@@ -98,6 +101,42 @@ def state() -> dict:
                    "reasons": list(g.reasons)},
         "races": [{**r, "days_until": clock.days_until(r["race_date"], today)} for r in races],
     }
+
+
+@app.get("/api/today", dependencies=[Depends(require_admin)])
+def api_today() -> dict:
+    """Today's sessions, the next 4 days, health gate, go/no-go, recent activity."""
+    from app import db, today as today_view
+    try:
+        with db.connect() as conn:
+            return today_view.build(conn, clock.today())
+    except MissingConfig as e:
+        raise HTTPException(503, str(e))
+
+
+@app.post("/admin/sync", dependencies=[Depends(require_admin)])
+def admin_sync(days: int = Query(default=3, ge=1, le=730), morning: bool = False) -> dict:
+    """Start a sync in the background; poll /admin/sync/status for the result."""
+    import threading
+    from app.ingest import runner
+    kind = "backfill" if days >= 60 else "manual"
+    threading.Thread(target=runner.run, kwargs={"kind": kind, "days": days, "morning": morning},
+                     daemon=True).start()
+    return {"started": kind, "days": days}
+
+
+@app.get("/admin/sync/status", dependencies=[Depends(require_admin)])
+def admin_sync_status() -> dict:
+    from app import db
+    with db.connect() as conn:
+        runs = conn.execute("select id, kind, started_at, finished_at, ok, summary from sync_runs "
+                            "order by id desc limit 5").fetchall()
+        counts = conn.execute(
+            """select (select count(*) from activities) as activities, (select count(*) from laps) as laps,
+                      (select count(*) from strength_sets) as strength_sets,
+                      (select count(*) from recovery) as recovery_days,
+                      (select resting_hr_baseline from profile where id = 1) as resting_hr_baseline""").fetchone()
+    return {"counts": counts, "runs": runs}
 
 
 @app.get("/admin/diagnostics", dependencies=[Depends(require_admin)])
