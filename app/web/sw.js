@@ -1,6 +1,6 @@
 // App shell cache. API data is cached by app.js (localStorage), so the
 // service worker never caches /api/* or /admin/*.
-const VERSION = 'training-v1';
+const VERSION = 'training-v2';
 const SHELL = ['/', '/static/app.css', '/static/app.js', '/static/icon-192.png', '/manifest.webmanifest'];
 
 self.addEventListener('install', e => {

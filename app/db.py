@@ -2,24 +2,44 @@
 from __future__ import annotations
 
 import json
+import threading
 from contextlib import contextmanager
 from datetime import date
 from typing import Iterator
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
 
 from app.config import MissingConfig, load_settings
 from app.health.state import Episode
 from app.periodization.phases import Phase
 
 
+_pool: ConnectionPool | None = None
+_pool_lock = threading.Lock()
+
+
+def _get_pool() -> ConnectionPool:
+    """One small pool per process. Opening a TLS connection to Supabase costs
+    several round trips; reusing connections keeps each request to its queries."""
+    global _pool
+    with _pool_lock:
+        if _pool is None:
+            url = load_settings().db_url
+            if not url:
+                raise MissingConfig("SUPABASE_DB_URL")
+            _pool = ConnectionPool(
+                url, min_size=1, max_size=6, timeout=15, max_idle=240, open=True,
+                kwargs={"row_factory": dict_row, "connect_timeout": 10},
+                check=ConnectionPool.check_connection, name="training")
+        return _pool
+
+
 @contextmanager
 def connect() -> Iterator[psycopg.Connection]:
-    url = load_settings().db_url
-    if not url:
-        raise MissingConfig("SUPABASE_DB_URL")
-    with psycopg.connect(url, row_factory=dict_row, connect_timeout=10) as conn:
+    """A pooled connection; commits on success, rolls back on error."""
+    with _get_pool().connection() as conn:
         yield conn
 
 

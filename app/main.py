@@ -12,7 +12,9 @@ import logging
 from datetime import timedelta
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+import time
+
+from fastapi import Body, Cookie, Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
@@ -80,8 +82,35 @@ def _check_token(supplied: str | None) -> None:
         raise HTTPException(401, "unauthorized")
 
 
-def require_admin(x_admin_token: str | None = Header(default=None)) -> None:
-    _check_token(x_admin_token)
+SESSION_COOKIE = "training_token"
+SESSION_DAYS = 400
+
+
+def require_admin(x_admin_token: str | None = Header(default=None),
+                  training_token: str | None = Cookie(default=None)) -> None:
+    """Admin token from the header (curl) or the session cookie (the app)."""
+    _check_token(x_admin_token or training_token)
+
+
+@app.middleware("http")
+async def timing(request: Request, call_next):
+    t0 = time.perf_counter()
+    response = await call_next(request)
+    ms = (time.perf_counter() - t0) * 1000
+    response.headers["Server-Timing"] = f"app;dur={ms:.0f}"
+    if request.url.path.startswith("/api/") and ms > 1500:
+        log.warning("slow %s %s: %.0f ms", request.method, request.url.path, ms)
+    return response
+
+
+@app.post("/api/session")
+def create_session(response: Response, token: str = Body(..., embed=True)) -> dict:
+    """Trade the admin token for a long-lived HttpOnly cookie, so the phone
+    doesn't depend on page storage (which iOS can clear or separate)."""
+    _check_token(token.strip())
+    response.set_cookie(SESSION_COOKIE, token.strip(), max_age=SESSION_DAYS * 86400,
+                        httponly=True, secure=True, samesite="strict", path="/")
+    return {"ok": True}
 
 
 @app.get("/healthz")

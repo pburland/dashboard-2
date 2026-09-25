@@ -16,22 +16,39 @@ const fmt = (s, o) => D(s).toLocaleDateString('en-US', {timeZone: 'UTC', ...o});
 function store(k, v) { try { localStorage.setItem(k, v); } catch {} }
 function load(k) { try { return localStorage.getItem(k); } catch { return null; } }
 
+const TIMEOUT_MS = 15000;
+let lastLoadMs = null;
+
 async function api(path) {
-  const token = load(TOKEN_KEY);
-  if (!token) throw Object.assign(new Error('no token'), {auth: true});
+  // Auth rides on an HttpOnly session cookie set by /api/session. A token
+  // saved by an older version of the app is still sent as a header.
+  const legacy = load(TOKEN_KEY);
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
+  const t0 = performance.now();
   try {
-    const r = await fetch(path, {headers: {'X-Admin-Token': token}});
+    const r = await fetch(path, {credentials: 'same-origin', signal: ctl.signal,
+                                 headers: legacy ? {'X-Admin-Token': legacy} : {}});
     if (r.status === 401) throw Object.assign(new Error('unauthorized'), {auth: true});
-    if (!r.ok) throw new Error(`${r.status}`);
+    if (!r.ok) throw new Error(`Server error ${r.status}`);
     const data = await r.json();
+    lastLoadMs = Math.round(performance.now() - t0);
     store(CACHE_KEY + path, JSON.stringify({at: Date.now(), data}));
     return {data, cached: false};
   } catch (e) {
     if (e.auth) throw e;
+    const why = e.name === 'AbortError' ? `No answer from the server after ${TIMEOUT_MS / 1000}s` : (e.message || 'Network error');
     const c = load(CACHE_KEY + path);
-    if (c) { const {at, data} = JSON.parse(c); return {data, cached: at}; }
-    throw e;
+    if (c) { const {at, data} = JSON.parse(c); return {data, cached: at, why}; }
+    throw Object.assign(new Error(why), {why});
+  } finally {
+    clearTimeout(timer);
   }
+}
+
+function errorCard(where, why) {
+  return `<section class="card"><div class="label">${esc(where)}</div>
+    <p style="margin:0 0 12px;color:var(--ink2)">${esc(why)}</p>
+    <button class="primary-btn" onclick="location.reload()">Retry</button></section>`;
 }
 
 // ── sign in ─────────────────────────────────────────────────────────────
@@ -39,9 +56,19 @@ function showSignin(msg) {
   $('app').hidden = true; $('signin').hidden = false; $('tokerr').textContent = msg || '';
 }
 $('tokbtn').onclick = async () => {
-  store(TOKEN_KEY, $('tok').value.trim());
-  $('tok').value = '';
-  start();
+  const token = $('tok').value.trim();
+  if (!token) return;
+  $('tokbtn').disabled = true; $('tokerr').textContent = 'Checking…';
+  try {
+    const r = await fetch('/api/session', {method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify({token})});
+    if (r.status === 401) { $('tokerr').textContent = 'That token was rejected.'; return; }
+    if (!r.ok) { $('tokerr').textContent = `Server error ${r.status}. Try again.`; return; }
+    try { localStorage.removeItem(TOKEN_KEY); } catch {}
+    $('tok').value = ''; $('tokerr').textContent = '';
+    start();
+  } catch { $('tokerr').textContent = "Can't reach the server."; }
+  finally { $('tokbtn').disabled = false; }
 };
 
 // ── tabs ────────────────────────────────────────────────────────────────
@@ -170,7 +197,7 @@ async function renderPlan() {
         const act = s.actual ? ` <span class="done-chip">✓ ${s.actual.mi} mi · ${Math.round(s.actual.avg_hr || 0)} bpm</span>` : '';
         return `<div class="n4row"><span class="kbar" style="background:${color}"></span><div><div class="n4t">${esc(s.title)}${act}</div><div class="n4m">${kname}${meta ? ' · ' + meta : ''}</div></div></div>`;
       }).join('') || '<div class="n4m">Rest</div>'}</div></div>`).join('')}</section>`;
-  } catch (e) { if (e.auth) showSignin('Token rejected. Paste it again.'); }
+  } catch (e) { if (e.auth) return showSignin('Signed out on this device. Paste your token again.'); $('plan').innerHTML = errorCard('Plan', e.why || e.message); }
 }
 
 // ── trends ──────────────────────────────────────────────────────────────
@@ -195,20 +222,27 @@ async function renderTrends() {
       <div class="row"><div class="stat"><div class="v">${Math.round(last.e1rm)}<small> lb</small></div><div class="n">${fmt(last.day, {month: 'short', day: 'numeric'})} · top set ${last.top} lb</div></div>
       <div style="text-align:right"><span class="pill ${last.e1rm >= 225 ? 'ok' : 'stop'}">${last.e1rm >= 225 ? '✓ 225 reached' : '✕ Off track for 225'}</span></div></div>
       <table style="margin-top:10px">${b.slice(-8).reverse().map(x => `<tr><td>${fmt(x.day, {month: 'short', day: 'numeric'})}</td><td>${x.e1rm} lb est.</td><td class="muted">top ${x.top}</td></tr>`).join('')}</table>` : '<p class="muted">No bench sessions in Hevy yet.</p>'}</section>`;
-  } catch (e) { if (e.auth) showSignin('Token rejected. Paste it again.'); }
+  } catch (e) { if (e.auth) return showSignin('Signed out on this device. Paste your token again.'); $('trends').innerHTML = errorCard('Trends', e.why || e.message); }
 }
 
 // ── start ───────────────────────────────────────────────────────────────
+let starting = false;
 async function start() {
+  if (starting) return;
+  starting = true;
   try {
-    const {data, cached} = await api('/api/today');
+    const {data, cached, why} = await api('/api/today');
     $('signin').hidden = true; $('app').hidden = false;
     $('hdrdate').dataset.iso = String(data.today);
     renderToday(data, cached);
+    if (why) $('sync').textContent = `${why}. ` + $('sync').textContent;
+    else if (lastLoadMs != null) $('sync').textContent += ` · loaded in ${(lastLoadMs / 1000).toFixed(1)}s`;
   } catch (e) {
-    if (e.auth) return showSignin(load(TOKEN_KEY) ? 'Token rejected. Paste it again.' : '');
+    if (e.auth) return showSignin('');
     $('signin').hidden = true; $('app').hidden = false;
-    $('today').innerHTML = `<div class="loading">Can't reach the server and nothing is cached yet.</div>`;
+    $('today').innerHTML = errorCard('Today', e.why || e.message);
+  } finally {
+    starting = false;
   }
 }
 
