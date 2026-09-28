@@ -99,7 +99,7 @@ chat layer is not built yet.
 - `app/ingest/`: sync, evaluation, scheduler.
 - `db/migrations/`: schema.
 - `db/seed/`: Patrick's plan and state.
-- `tests/`: 55 tests. The database tests need `TEST_DATABASE_URL`.
+- `tests/`: 51 tests. The database tests need `TEST_DATABASE_URL`.
 
 Please return findings ranked by severity. For each, give the file and line,
 what goes wrong, a concrete scenario, and a suggested fix.
