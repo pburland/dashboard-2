@@ -28,3 +28,6 @@ venv/
 
 # Local UI mockups built from personal data — not committed
 preview/
+
+# Generated audit bundle (regenerate with python -m scripts.make_audit_bundle)
+audit/
