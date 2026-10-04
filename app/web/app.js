@@ -198,6 +198,43 @@ function recentCard(acts) {
   }).join('')}</section>`;
 }
 
+// ── plan change proposals (chat and auto-rebase) ────────────────────────
+function proposalCard(p) {
+  const flags = p.flags || [];
+  const stops = flags.filter(f => f.severity === 'stop'), warns = flags.filter(f => f.severity === 'warn');
+  const changes = Array.isArray(p.changes) ? p.changes : String(p.changes || '').split('; ');
+  const id = esc(p.proposal_id || p.id);
+  if (p.status === 'refused' || stops.length)
+    return `<div class="prop refused"><div class="label">Not allowed</div>${changes.map(c => `<div>${esc(c)}</div>`).join('')}
+      ${stops.map(f => `<div class="flagline"><span class="pill stop">✕</span><span>${esc(f.message)}</span></div>`).join('')}</div>`;
+  return `<div class="prop" data-id="${id}"><div class="label">Proposed change${p.reason ? ' · ' + esc(p.reason) : ''}</div>
+    ${changes.map(c => `<div class="chg">${esc(c)}</div>`).join('')}
+    ${warns.map(f => `<label class="ack"><input type="checkbox" value="${esc(f.key)}"> I accept: ${esc(f.message)}</label>`).join('')}
+    <div class="prop-btns"><button class="primary-btn" data-act="apply"${warns.length ? ' disabled' : ''}>Confirm</button>
+    <button class="ghost-btn" data-act="cancel">Cancel</button></div><div class="n4m prop-msg"></div></div>`;
+}
+
+function wireProposals(root) {
+  root.querySelectorAll('.prop[data-id]').forEach(el => {
+    if (el.dataset.wired) return; el.dataset.wired = '1';
+    const id = el.dataset.id, btn = el.querySelector('[data-act=apply]'), boxes = [...el.querySelectorAll('.ack input')];
+    boxes.forEach(b => b.onchange = () => { btn.disabled = !boxes.every(x => x.checked); });
+    btn.onclick = async () => {
+      btn.disabled = true;
+      try {
+        const r = await post(`/api/plan/proposals/${id}/apply`, {accepted_warns: boxes.map(b => b.value)}, 30000);
+        if (r.applied) el.innerHTML = `<div class="label">Done</div>${(r.changes || []).map(c => `<div>${esc(c)}</div>`).join('')}`;
+        else if (r.stale) el.outerHTML = proposalCard(r.new_proposal), wireProposals(root);
+        else el.querySelector('.prop-msg').textContent = (r.flags || []).map(f => f.message).join(' ') || 'Not applied.';
+      } catch (e) { el.querySelector('.prop-msg').textContent = e.message; btn.disabled = false; }
+    };
+    el.querySelector('[data-act=cancel]').onclick = async () => {
+      try { await post(`/api/plan/proposals/${id}/cancel`, {}, 15000); } catch {}
+      el.innerHTML = '<div class="n4m">Cancelled. Nothing changed.</div>';
+    };
+  });
+}
+
 // ── post-workout check-in ───────────────────────────────────────────────
 function checkinCard(p) {
   if (!p) return '';
@@ -268,7 +305,8 @@ function renderToday(t, cached) {
       <div class="name">${esc(r.name.replace('IRONMAN ', 'IM '))}</div>
       <div class="meta">${r.goal_time ? 'Goal ' + esc(hm(r.goal_time)) : r.priority === 2 ? 'Target after PR' : 'No time goal'}${r.stretch_time ? ' · stretch ' + esc(hm(r.stretch_time)) : ''}</div></div>`).join('');
   const sessions = t.sessions.filter(s => !s.suppressed);
-  let todayHtml = statusLine(t.health, t.phase) + checkinCard(t.pending_checkin);
+  let todayHtml = statusLine(t.health, t.phase) + checkinCard(t.pending_checkin)
+    + (t.proposals || []).map(p => `<section class="card">${proposalCard(p)}</section>`).join('');
   if (!t.health.prescriptions_allowed) {
     todayHtml += `<section class="card hold"><div class="state"><span class="dot"></span>Health hold</div><h2>No workout today.</h2>
       <ul class="crit">${t.health.reasons.slice(1).map(r => `<li><span class="box"></span><div class="t">${esc(r.replace('to exit: ', ''))}</div></li>`).join('')}</ul></section>`;
@@ -284,7 +322,7 @@ function renderToday(t, cached) {
   todayHtml += fuelCard(t.fuel, t.body);
   todayHtml += gateCard(t.long_run_gate) + readinessCard(t.readiness) + recentCard(t.recent_activities);
   $('today').innerHTML = todayHtml;
-  wireCheckin();
+  wireCheckin(); wireProposals($('today'));
   const last = t.last_sync ? new Date(t.last_sync.finished_at).toLocaleString('en-US', {weekday: 'short', hour: 'numeric', minute: '2-digit'}) : 'never';
   $('sync').textContent = (cached ? `Offline · showing data from ${new Date(cached).toLocaleString()}. ` : '') + `Last sync ${last}`;
 }
@@ -306,15 +344,24 @@ async function renderPlan() {
         const [kname, color] = KIND[kindOf(s)] || KIND.rest, st = s.structure || {};
         const meta = [s.distance_mi != null ? `${s.distance_mi} mi` : '', s.duration_min ? `${Math.round(s.duration_min)} min` : ''].filter(Boolean).join(' · ');
         const act = s.actual ? ` <span class="done-chip">✓ ${s.actual.mi} mi · ${Math.round(s.actual.avg_hr || 0)} bpm</span>` : '';
-        const tag = st.provisional ? '<span class="pill prev">if cleared</span>' : '';
+        const cb = st.changed_by;
+        const tag = (st.provisional ? '<span class="pill prev">if cleared</span>' : '')
+          + (cb ? `<span class="pill prev">${esc(cb.by === 'you' ? 'moved by you' : cb.by)} · ${fmt(cb.on, {month: 'short', day: 'numeric'})}</span>` : '');
+        const why = cb ? `<div class="brief">Why: ${esc(cb.reason)}${cb.batch && s.status === 'planned' && Date.now() - D(cb.on) < 7 * 864e5
+          ? ` <button class="btn-link" data-undo="${esc(cb.batch)}">Undo</button>` : ''}</div>` : '';
         const bt = s.best_time?.label ? ` · <span class="bt">${esc(s.best_time.label)}</span>` : '';
-        const more = st.brief || s.best_time ? `<div class="brief">${esc(st.brief || '')}</div>${whenLine(s)}` : '';
+        const more = (st.brief || s.best_time ? `<div class="brief">${esc(st.brief || '')}</div>${whenLine(s)}` : '') + why;
         return `<div class="n4row"><span class="kbar" style="background:${color}"></span><div style="flex:1"><details class="pb"><summary>
           <div class="n4t">${esc(s.title)}${tag}${act}</div><div class="n4m">${kname}${meta ? ' · ' + meta : ''}${bt}</div></summary>${more}</details></div></div>`;
       }).join('') || '<div class="n4m">Rest</div>'}</div></div>`;
     });
     $('plan').innerHTML = `<section class="card"><div class="label">Next 4 weeks · tap a workout for its brief</div>${html}
       ${data.timing_note ? `<div class="n4m" style="margin-top:10px">Best times without: ${esc(data.timing_note)}</div>` : ''}</section>`;
+    $('plan').querySelectorAll('[data-undo]').forEach(b => b.onclick = async ev => {
+      ev.preventDefault(); b.disabled = true;
+      try { await post(`/api/plan/undo/${b.dataset.undo}`, {}, 15000); renderPlan(); }
+      catch (e) { b.textContent = e.message; }
+    });
   } catch (e) { if (e.auth) return showSignin('Signed out on this device. Paste your token again.'); $('plan').innerHTML = errorCard('Plan', e.why || e.message); }
 }
 
@@ -347,8 +394,16 @@ function chatMsg(role, html, extra = '') {
   $('chatlog').lastElementChild.scrollIntoView({block: 'end', behavior: 'smooth'});
   return $('chatlog').lastElementChild;
 }
+function actsHtml(acts) {
+  return (acts || []).filter(a => a.tool === 'propose_change' && a.result && a.result.proposal_id)
+    .map(a => proposalCard(a.result)).join('') + actsLine(acts);
+}
 function actsLine(acts) {
-  const words = (acts || []).map(a => a.tool === 'log_note' ? `Noted (${a.input.type})` : a.tool === 'start_health_hold' && a.result.opened ? 'Health hold started' : '').filter(Boolean);
+  const words = (acts || []).map(a => a.tool === 'log_note' ? `Noted (${a.input.type})`
+    : a.tool === 'start_health_hold' && a.result.opened ? 'Health hold started'
+    : a.tool === 'apply_change' && a.result.applied ? 'Plan updated'
+    : a.tool === 'add_travel' && a.result.saved ? 'Trip saved'
+    : a.tool === 'save_preference' && a.result.saved ? 'Preference saved' : '').filter(Boolean);
   return words.length ? `<div class="acts">✓ ${esc(words.join(' · '))}</div>` : '';
 }
 async function openChat() {
@@ -361,7 +416,8 @@ async function openChat() {
   try {
     const {data} = await api('/api/chat/' + id);
     $('chatlog').innerHTML = '';
-    data.forEach(m => chatMsg(m.role, (m.role === 'user' ? esc(m.content) : md(m.content)) + (m.role === 'assistant' ? actsLine(m.actions) : '')));
+    data.forEach(m => chatMsg(m.role, (m.role === 'user' ? esc(m.content) : md(m.content)) + (m.role === 'assistant' ? actsHtml(m.actions) : '')));
+    wireProposals($('chatlog'));
   } catch { try { localStorage.removeItem(CONV_KEY); } catch {} }
 }
 $('newchat').onclick = () => { try { localStorage.removeItem(CONV_KEY); } catch {} $('chatlog').innerHTML = ''; chatLoaded = false; openChat(); };
@@ -380,7 +436,8 @@ $('compose').onsubmit = async e => {
     const r = await post('/api/chat', {message: text, conversation_id: id ? Number(id) : null});
     store(CONV_KEY, String(r.conversation_id));
     thinking.classList.remove('thinking');
-    thinking.innerHTML = md(r.reply) + actsLine(r.actions);
+    thinking.innerHTML = md(r.reply) + actsHtml(r.actions);
+    wireProposals($('chatlog'));
   } catch (err) {
     if (err.auth) return showSignin('Signed out on this device. Paste your token again.');
     thinking.classList.remove('thinking');

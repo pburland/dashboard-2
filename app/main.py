@@ -212,6 +212,47 @@ def api_checkin(planned_workout_id: int | None = Body(default=None, embed=True),
     return {"ok": True, "effects": r["effects"], "check_in_on": r["check_in"]["check_in_on"]}
 
 
+@app.get("/api/plan/proposals", dependencies=[Depends(require_admin)])
+def api_proposals() -> list:
+    from app import db
+    with db.connect() as conn:
+        return conn.execute("select id, source, explanation, reason, flags, created_at from plan_proposals "
+                            "where status = 'pending' order by created_at desc limit 10").fetchall()
+
+
+@app.post("/api/plan/proposals/{proposal_id}/apply", dependencies=[Depends(require_admin)])
+def api_apply_proposal(proposal_id: str, accepted_warns: list[str] = Body(default=[], embed=True)) -> dict:
+    """The Confirm button: applies a proposal if it still passes every rule."""
+    from app import db
+    from app.planning import changes
+    try:
+        with db.connect() as conn:
+            return changes.apply(conn, proposal_id, accepted_warns, clock.today())
+    except changes.ChangeError as e:
+        raise HTTPException(409, str(e))
+
+
+@app.post("/api/plan/proposals/{proposal_id}/cancel", dependencies=[Depends(require_admin)])
+def api_cancel_proposal(proposal_id: str) -> dict:
+    from app import db
+    from app.planning import changes
+    with db.connect() as conn:
+        changes.cancel(conn, proposal_id)
+    return {"cancelled": True}
+
+
+@app.post("/api/plan/undo/{batch_id}", dependencies=[Depends(require_admin)])
+def api_undo(batch_id: str) -> dict:
+    """Undo a plan change (chat edit or auto-rebase) within 7 days."""
+    from app import db
+    from app.planning import changes
+    try:
+        with db.connect() as conn:
+            return changes.undo(conn, batch_id, clock.today())
+    except changes.ChangeError as e:
+        raise HTTPException(409, str(e))
+
+
 @app.get("/api/plan", dependencies=[Depends(require_admin)])
 def api_plan(days: int = Query(default=28, ge=1, le=60)) -> dict:
     from app import db, today as view

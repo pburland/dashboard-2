@@ -100,6 +100,9 @@ def build(conn, today: date, next_days: int = 4) -> dict:
         "races": [r | {"days_until": (r["race_date"] - today).days} for r in races],
         "timing_note": timing_note,
         "pending_checkin": checkins.pending(conn, today),
+        "proposals": conn.execute(
+            "select id, source, explanation as changes, reason, flags from plan_proposals "
+            "where status = 'pending' and source = 'system' order by created_at desc limit 3").fetchall(),
         "fuel": fuel,
         "body": body,
         "last_sync": last,

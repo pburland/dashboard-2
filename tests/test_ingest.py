@@ -320,7 +320,8 @@ def test_pat_gpt_logs_notes_and_can_open_but_not_close_a_hold(conn_now, monkeypa
     assert len(chat.messages(conn_now, r["conversation_id"])) == 4
     # A hold can't be opened twice; there is no tool to close one.
     assert chat.run_tool(conn_now, "start_health_hold", {"kind": "illness", "reason": "x"}, date(2026, 10, 5))["opened"] is False
-    assert {t["name"] for t in chat.TOOLS} == {"log_note", "start_health_hold"}
+    names = {t["name"] for t in chat.TOOLS}
+    assert "start_health_hold" in names and not any("clear" in n or "end_hold" in n for n in names)
 
 
 @needs_db

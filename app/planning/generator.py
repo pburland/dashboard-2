@@ -152,6 +152,21 @@ def _round_half(x: float) -> float:
     return round(x * 2) / 2
 
 
+def day_gate(conn, today: date, since: date):
+    """Health gate for any day: the episode as of ``today`` (previewing
+    clearance on the expected date for future days) plus recent check-ins.
+    The generator, chat edits and rebases all judge days with this."""
+    from app import checkins
+    episode = db.open_episode(conn, today)
+    recent_checkins = checkins.recent(conn, since - timedelta(days=checkins.CAUTION_DAYS))
+
+    def gate_for(d: date):
+        ep = provisional(episode, d) if d > today else episode
+        why = checkins.caution_reason(recent_checkins, d) if d >= today else None
+        return gate(ep, MorningSignals(checkin_reason=why), d)
+    return gate_for
+
+
 # ── one week ─────────────────────────────────────────────────────────────
 @dataclass
 class WeekPlan:
@@ -173,13 +188,7 @@ def plan_week(conn, ws: date, *, basis_mi: float, factor: float = 1.0, hist: His
     today = today or ws
     episode = db.open_episode(conn, today)
     hist = hist or history(conn, ws)
-    from app import checkins
-    recent_checkins = checkins.recent(conn, ws - timedelta(days=checkins.CAUTION_DAYS))
-
-    def gate_for(d: date):
-        ep = provisional(episode, d) if d > today else episode
-        why = checkins.caution_reason(recent_checkins, d) if d >= today else None
-        return gate(ep, MorningSignals(checkin_reason=why), d)
+    gate_for = day_gate(conn, today, ws - timedelta(days=7))
 
     is_prov = any(gate_for(ws + timedelta(days=i)).status is not Status.HOLD
                   and episode is not None and episode.return_started_on is None
