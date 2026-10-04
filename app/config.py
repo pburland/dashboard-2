@@ -32,6 +32,7 @@ class Settings:
     oura_client_id: str | None
     oura_client_secret: str | None
     oura_scopes: str
+    calendar_ics_url: str | None
 
 
 def load_settings() -> Settings:
@@ -49,6 +50,7 @@ def load_settings() -> Settings:
         oura_client_id=_get("OURA_CLIENT_ID"),
         oura_client_secret=_get("OURA_CLIENT_SECRET"),
         oura_scopes=_get("OURA_SCOPES", "personal daily heartrate session"),
+        calendar_ics_url=_get("GOOGLE_CALENDAR_ICS_URL"),
     )
 
 

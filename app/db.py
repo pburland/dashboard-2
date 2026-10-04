@@ -75,7 +75,8 @@ def open_episode(conn: psycopg.Connection, as_of: date | None = None) -> Episode
         id=r["id"], kind=r["kind"], started_on=r["started_on"], reason=r["reason"],
         criteria_met={k: date.fromisoformat(v) for k, v in (r["criteria_met"] or {}).items()},
         return_started_on=r["return_started_on"], return_ends_on=r["return_ends_on"],
-        closed_on=r["closed_on"],
+        closed_on=r["closed_on"], expected_clear_on=r.get("expected_clear_on"),
+        return_days=r.get("return_days"),
     )
 
 

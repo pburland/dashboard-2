@@ -48,7 +48,8 @@ login methods and the library falls through to one that works.
 | `PUBLIC_BASE_URL` | the Railway address from 3.2 |
 | `HEVY_API_KEY` | a **new** key from Hevy (the one shared in chat should be regenerated) |
 | `GARMIN_TOKENS` | run `pbcopy < ~/garmin-login/garmin_tokens.json`, then paste. Looks like `{"di_token": …}` |
-| `ANTHROPIC_API_KEY` | console.anthropic.com → API Keys (used from the chat step onward) |
+| `ANTHROPIC_API_KEY` | console.anthropic.com → API Keys (Pat-GPT and the weekly report narrative) |
+| `GOOGLE_CALENDAR_ICS_URL` | Google Calendar → Settings → your work calendar → "Secret address in iCal format" (best-time suggestions avoid your meetings) |
 
 4. Railway redeploys. **Success:** opening `https://<your-domain>/healthz`
    shows today's date.
@@ -93,3 +94,15 @@ curl -s -H "X-Admin-Token: $TOKEN" https://dashboard-2-production-6f5f.up.railwa
 
 Today's view as the phone app will see it: `/api/today` (same header).
 To force a sync now: `curl -s -X POST -H "X-Admin-Token: $TOKEN" ".../admin/sync?days=3"`.
+
+
+## 7. Weekly report, plan and Pat-GPT
+- **Sunday 7 PM** (where you are): the server syncs the week, writes a report
+  (Reports tab), and re-plans the next 3 weeks from it. Week one is the plan;
+  weeks two and three are a preview and get rebuilt the next Sunday.
+- To write one now (e.g. after changing something):
+  `curl -X POST -H "X-Admin-Token: $TOKEN" "$URL/admin/report"` (last week), or
+  add `?week=YYYY-MM-DD` (a Monday).
+- **Pat-GPT** (tab in the app) answers from your data. It can save notes and
+  start a health hold if you report being sick; it can never end one.
+- `GET /admin/diagnostics` now also checks the calendar and the Anthropic key.

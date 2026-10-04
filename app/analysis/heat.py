@@ -30,6 +30,8 @@ class HourlyWeather:
     time: datetime          # start of the hour, local
     temp_f: float
     rel_humidity: float     # percent
+    feels_f: float | None = None        # apparent temperature (wind chill / heat)
+    precip_pct: float | None = None     # chance of precipitation
 
 
 def heat_index_f(temp_f: float, rh: float) -> float:

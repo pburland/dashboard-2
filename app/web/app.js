@@ -45,6 +45,48 @@ async function api(path) {
   }
 }
 
+async function post(path, body, timeoutMs = 90000) {
+  const legacy = load(TOKEN_KEY);
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), timeoutMs);
+  try {
+    const r = await fetch(path, {method: 'POST', credentials: 'same-origin', signal: ctl.signal,
+      headers: {'Content-Type': 'application/json', ...(legacy ? {'X-Admin-Token': legacy} : {})},
+      body: JSON.stringify(body)});
+    if (r.status === 401) throw Object.assign(new Error('unauthorized'), {auth: true});
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.detail || `Server error ${r.status}`);
+    return data;
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('No answer after ' + timeoutMs / 1000 + 's');
+    throw e;
+  } finally { clearTimeout(timer); }
+}
+
+// Tiny, safe Markdown: escape first, then **bold**, bullets and paragraphs.
+function md(text) {
+  const out = [];
+  let list = false;
+  for (const raw of String(text || '').split('\n')) {
+    const line = esc(raw.trim()).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/(^|\s)_(.+?)_(?=\s|$)/g, '$1<i>$2</i>');
+    const item = line.match(/^[-*•]\s+(.*)/);
+    if (item) { if (!list) { out.push('<ul>'); list = true; } out.push(`<li>${item[1]}</li>`); continue; }
+    if (list) { out.push('</ul>'); list = false; }
+    if (!line) continue;
+    const h = line.match(/^#+\s+(.*)/);
+    out.push(h ? `<p><b>${h[1]}</b></p>` : `<p>${line}</p>`);
+  }
+  if (list) out.push('</ul>');
+  return out.join('');
+}
+
+function whenLine(s) {
+  const b = s.best_time;
+  if (!b) return '';
+  if (!b.label) return `<div class="when">${esc(b.why)}</div>`;
+  const day = fmt(s.date, {weekday: 'short'});
+  return `<div class="when">Best time: <b>${esc(day)} ${esc(b.label)}</b>${b.place ? ' in ' + esc(b.place) : ''} · ${esc(b.why)}</div>`;
+}
+
 function errorCard(where, why) {
   return `<section class="card"><div class="label">${esc(where)}</div>
     <p style="margin:0 0 12px;color:var(--ink2)">${esc(why)}</p>
@@ -77,6 +119,8 @@ document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click
   document.querySelectorAll('main').forEach(m => m.hidden = m.id !== b.dataset.tab);
   if (b.dataset.tab === 'plan') renderPlan();
   if (b.dataset.tab === 'trends') renderTrends();
+  if (b.dataset.tab === 'reports') renderReports();
+  if (b.dataset.tab === 'ask') openChat();
 }));
 
 // ── today ───────────────────────────────────────────────────────────────
@@ -99,8 +143,10 @@ function sessionCard(s) {
   if (lines.length) body += `<ol class="steps">${lines.map(l => `<li>${l}</li>`).join('')}</ol>`;
   if (st.exercises) body += `<table class="ex">${st.exercises.map(([n, r, w]) =>
       `<tr><td class="t">${esc(n)}</td><td>${esc(r)}</td><td class="t muted">${esc(w)}</td></tr>`).join('')}</table>`;
+  if (st.brief) body += `<div class="brief">${esc(st.brief)}</div>`;
   if (s.notes) body += `<div class="note">${esc(s.notes)}</div>`;
   if (s.flags?.length) body += s.flags.map(f => `<div class="flagline"><span class="pill ${f.severity === 'stop' ? 'stop' : 'warn'}">${f.severity === 'stop' ? '✕' : '▲'} ${esc(f.kind.replace(/_/g, ' '))}</span><span>${esc(f.message)}</span></div>`).join('');
+  if (s.status !== 'done') body += whenLine(s);
   const done = s.status === 'done' ? ' <span class="done-chip">✓ done</span>' : '';
   return `<section class="card workout" style="--accent:${color}">
     <div class="label"><span class="kdot" style="background:${color}"></span>Today · ${kname}${done}</div>
@@ -114,8 +160,9 @@ function next4(days) {
       if (s.suppressed) return '<div class="n4row"><span class="kbar" style="background:var(--red)"></span><div><div class="n4t">Health hold</div></div></div>';
       const [kname, color] = KIND[kindOf(s)];
       const meta = [s.distance_mi != null ? `${s.distance_mi} mi` : '', s.duration_min ? `${Math.round(s.duration_min)} min` : ''].filter(Boolean).join(' · ');
+      const bt = s.best_time?.label ? ` · <span class="bt">${esc(s.best_time.label)}</span>` : '';
       return `<div class="n4row"><span class="kbar" style="background:${color}"></span>
-        <div><div class="n4t">${esc(s.title)}</div><div class="n4m">${kname}${meta ? ' · ' + meta : ''}</div></div></div>`;
+        <div><div class="n4t">${esc(s.title)}</div><div class="n4m">${kname}${meta ? ' · ' + meta : ''}${bt}</div></div></div>`;
     }).join('') || '<div class="n4row"><span class="kbar" style="background:var(--muted)"></span><div><div class="n4t">Rest</div></div></div>'}</div></div>`).join('');
 }
 
@@ -159,6 +206,7 @@ function statusLine(h, phase) {
 
 function renderToday(t, cached) {
   $('hdrdate').textContent = fmt(t.today, {weekday: 'short', month: 'short', day: 'numeric'}).toUpperCase();
+  $('hdrplace').textContent = t.where && t.where.away ? `${t.where.place} time` : 'server clock';
   $('phase').textContent = (t.phase.name ? `${t.phase.name} · ends ${fmt(t.phase.end, {month: 'short', day: 'numeric'})}` : '')
     + (t.where && t.where.away ? ` · ${t.where.place}` : '');
   $('goals').innerHTML = t.races.map((r, i) => `<div class="goal${i === 0 ? ' primary' : ''}">
@@ -166,7 +214,7 @@ function renderToday(t, cached) {
       <div class="badge">Goal #${r.priority} · ${esc(r.distance)}${r.status === 'uncertain' ? ' · uncertain' : ''}</div>
       <div class="days">${r.days_until}<small>days</small></div>
       <div class="name">${esc(r.name.replace('IRONMAN ', 'IM '))}</div>
-      <div class="meta">${r.goal_time ? 'Goal ' + esc(hm(r.goal_time)) : 'Target after PR'}${r.stretch_time ? ' · stretch ' + esc(hm(r.stretch_time)) : ''}</div></div>`).join('');
+      <div class="meta">${r.goal_time ? 'Goal ' + esc(hm(r.goal_time)) : r.priority === 2 ? 'Target after PR' : 'No time goal'}${r.stretch_time ? ' · stretch ' + esc(hm(r.stretch_time)) : ''}</div></div>`).join('');
   const sessions = t.sessions.filter(s => !s.suppressed);
   let todayHtml = statusLine(t.health, t.phase);
   if (!t.health.prescriptions_allowed) {
@@ -178,7 +226,9 @@ function renderToday(t, cached) {
   } else {
     todayHtml += '<section class="card workout" style="--accent:var(--muted)"><div class="label">Today</div><div class="wk-title">Rest day</div></section>';
   }
-  todayHtml += `<section class="card"><div class="label">Next 4 days</div>${next4(t.next_days)}</section>`;
+  const n4 = t.next_days.length ? next4(t.next_days)
+    : `<div class="n4m">${t.health.prescriptions_allowed ? 'Nothing planned yet.' : 'Nothing during the hold. The Plan tab shows what follows once you\'re cleared.'}</div>`;
+  todayHtml += `<section class="card"><div class="label">Next 4 days</div>${n4}${t.timing_note ? `<div class="n4m" style="margin-top:8px">Best times without: ${esc(t.timing_note)}</div>` : ''}</section>`;
   todayHtml += gateCard(t.long_run_gate) + readinessCard(t.readiness) + recentCard(t.recent_activities);
   $('today').innerHTML = todayHtml;
   const last = t.last_sync ? new Date(t.last_sync.finished_at).toLocaleString('en-US', {weekday: 'short', hour: 'numeric', minute: '2-digit'}) : 'never';
@@ -188,18 +238,101 @@ function renderToday(t, cached) {
 // ── plan ────────────────────────────────────────────────────────────────
 async function renderPlan() {
   try {
-    const {data} = await api('/api/plan?days=14');
+    const {data} = await api('/api/plan?days=28');
     const todayIso = $('hdrdate').dataset.iso;
-    $('plan').innerHTML = `<section class="card"><div class="label">This week and next</div>${data.map(d => `
-      <div class="plan-day${d.date === todayIso ? ' today' : ''}"><div class="n4d"><span>${fmt(d.date, {weekday: 'short'})}</span><b>${fmt(d.date, {day: 'numeric'})}</b></div>
+    let html = '', week = -1;
+    data.days.forEach((d, i) => {
+      if (Math.floor(i / 7) !== week) {
+        week = Math.floor(i / 7);
+        const anyPrev = data.days.slice(week * 7, week * 7 + 7).some(x => x.sessions.some(s => s.structure?.preview));
+        html += `<div class="weekhdr">Week of ${fmt(d.date, {month: 'short', day: 'numeric'})}${anyPrev ? ' · preview, re-planned Sunday' : ''}</div>`;
+      }
+      html += `<div class="plan-day${d.date === todayIso ? ' today' : ''}"><div class="n4d"><span>${fmt(d.date, {weekday: 'short'})}</span><b>${fmt(d.date, {day: 'numeric'})}</b></div>
       <div class="n4s">${d.sessions.map(s => {
-        const [kname, color] = KIND[kindOf(s)];
+        const [kname, color] = KIND[kindOf(s)] || KIND.rest, st = s.structure || {};
         const meta = [s.distance_mi != null ? `${s.distance_mi} mi` : '', s.duration_min ? `${Math.round(s.duration_min)} min` : ''].filter(Boolean).join(' · ');
         const act = s.actual ? ` <span class="done-chip">✓ ${s.actual.mi} mi · ${Math.round(s.actual.avg_hr || 0)} bpm</span>` : '';
-        return `<div class="n4row"><span class="kbar" style="background:${color}"></span><div><div class="n4t">${esc(s.title)}${act}</div><div class="n4m">${kname}${meta ? ' · ' + meta : ''}</div></div></div>`;
-      }).join('') || '<div class="n4m">Rest</div>'}</div></div>`).join('')}</section>`;
+        const tag = st.provisional ? '<span class="pill prev">if cleared</span>' : '';
+        const bt = s.best_time?.label ? ` · <span class="bt">${esc(s.best_time.label)}</span>` : '';
+        const more = st.brief || s.best_time ? `<div class="brief">${esc(st.brief || '')}</div>${whenLine(s)}` : '';
+        return `<div class="n4row"><span class="kbar" style="background:${color}"></span><div style="flex:1"><details class="pb"><summary>
+          <div class="n4t">${esc(s.title)}${tag}${act}</div><div class="n4m">${kname}${meta ? ' · ' + meta : ''}${bt}</div></summary>${more}</details></div></div>`;
+      }).join('') || '<div class="n4m">Rest</div>'}</div></div>`;
+    });
+    $('plan').innerHTML = `<section class="card"><div class="label">Next 4 weeks · tap a workout for its brief</div>${html}
+      ${data.timing_note ? `<div class="n4m" style="margin-top:10px">Best times without: ${esc(data.timing_note)}</div>` : ''}</section>`;
   } catch (e) { if (e.auth) return showSignin('Signed out on this device. Paste your token again.'); $('plan').innerHTML = errorCard('Plan', e.why || e.message); }
 }
+
+// ── reports ─────────────────────────────────────────────────────────────
+async function renderReports() {
+  try {
+    const {data} = await api('/api/reports');
+    if (!data.length) {
+      $('reports').innerHTML = '<section class="card"><div class="label">Weekly reports</div><p class="muted">The first report is written Sunday evening. Each one sets up the next week\'s plan.</p></section>';
+      return;
+    }
+    $('reports').innerHTML = data.map(r => {
+      const s = r.summary || {}, dec = s.decision || {};
+      const f = dec.factor, pill = f == null ? '' : f > 1 ? `<span class="pill ok">Next week +${Math.round((f - 1) * 100)}%</span>`
+        : f < 1 ? `<span class="pill warn">Next week −${Math.round((1 - f) * 100)}%</span>` : '<span class="pill off">Next week: hold steady</span>';
+      return `<section class="card report"><div class="label">Week of ${fmt(r.week_start, {month: 'short', day: 'numeric'})}</div>
+        <div class="meta"><span class="pill blue">${esc(s.completed_sessions ?? 0)}/${esc(s.planned_sessions ?? 0)} sessions</span>
+        <span class="pill blue">${esc(s.actual_run_mi ?? 0)} run mi</span>${pill}</div>${md(r.narrative)}</section>`;
+    }).join('');
+  } catch (e) { if (e.auth) return showSignin('Signed out on this device. Paste your token again.'); $('reports').innerHTML = errorCard('Reports', e.why || e.message); }
+}
+
+// ── Pat-GPT ─────────────────────────────────────────────────────────────
+const CONV_KEY = 'training.chat.conversation';
+const CHIPS = ['When should I do my next workout?', 'How did last week go?', 'What does my doctor need to clear me?', 'Summarize my next 2 weeks'];
+let chatLoaded = false, chatBusy = false;
+
+function chatMsg(role, html, extra = '') {
+  $('chatlog').insertAdjacentHTML('beforeend', `<div class="msg ${role === 'user' ? 'me' : 'ai'} ${extra}">${html}</div>`);
+  $('chatlog').lastElementChild.scrollIntoView({block: 'end', behavior: 'smooth'});
+  return $('chatlog').lastElementChild;
+}
+function actsLine(acts) {
+  const words = (acts || []).map(a => a.tool === 'log_note' ? `Noted (${a.input.type})` : a.tool === 'start_health_hold' && a.result.opened ? 'Health hold started' : '').filter(Boolean);
+  return words.length ? `<div class="acts">✓ ${esc(words.join(' · '))}</div>` : '';
+}
+async function openChat() {
+  $('chips').innerHTML = CHIPS.map(c => `<button type="button">${esc(c)}</button>`).join('');
+  $('chips').querySelectorAll('button').forEach(b => b.onclick = () => { $('chatin').value = b.textContent; $('compose').requestSubmit(); });
+  if (chatLoaded) return;
+  chatLoaded = true;
+  const id = load(CONV_KEY);
+  if (!id) { chatMsg('ai', md("Hi Patrick. Ask me anything about your training: today's workout, the best time to fit it in, how last week went, or what comes after the mono hold.")); return; }
+  try {
+    const {data} = await api('/api/chat/' + id);
+    $('chatlog').innerHTML = '';
+    data.forEach(m => chatMsg(m.role, (m.role === 'user' ? esc(m.content) : md(m.content)) + (m.role === 'assistant' ? actsLine(m.actions) : '')));
+  } catch { try { localStorage.removeItem(CONV_KEY); } catch {} }
+}
+$('newchat').onclick = () => { try { localStorage.removeItem(CONV_KEY); } catch {} $('chatlog').innerHTML = ''; chatLoaded = false; openChat(); };
+$('chatin').addEventListener('input', e => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; });
+$('chatin').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !('ontouchstart' in window)) { e.preventDefault(); $('compose').requestSubmit(); } });
+$('compose').onsubmit = async e => {
+  e.preventDefault();
+  const text = $('chatin').value.trim();
+  if (!text || chatBusy) return;
+  chatBusy = true; $('chatsend').disabled = true;
+  $('chatin').value = ''; $('chatin').style.height = 'auto';
+  chatMsg('user', esc(text));
+  const thinking = chatMsg('ai', 'Thinking…', 'thinking');
+  try {
+    const id = load(CONV_KEY);
+    const r = await post('/api/chat', {message: text, conversation_id: id ? Number(id) : null});
+    store(CONV_KEY, String(r.conversation_id));
+    thinking.classList.remove('thinking');
+    thinking.innerHTML = md(r.reply) + actsLine(r.actions);
+  } catch (err) {
+    if (err.auth) return showSignin('Signed out on this device. Paste your token again.');
+    thinking.classList.remove('thinking');
+    thinking.innerHTML = `<span style="color:var(--red)">${esc(err.message)}</span>`;
+  } finally { chatBusy = false; $('chatsend').disabled = false; }
+};
 
 // ── trends ──────────────────────────────────────────────────────────────
 async function renderTrends() {

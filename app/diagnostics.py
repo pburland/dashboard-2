@@ -27,7 +27,8 @@ def _run(fn) -> dict:
 
 def run_all() -> dict:
     from app import db
-    from app.integrations import garmin, hevy, oura, weather
+    from app import llm
+    from app.integrations import calendar, garmin, hevy, oura, weather
 
     results: dict = {}
     with ExitStack() as stack:
@@ -48,6 +49,8 @@ def run_all() -> dict:
         results["oura"] = (_run(lambda: oura.check(conn)) if conn is not None else
                            {"ok": False, "not_configured": ["database (Oura tokens live there)"]})
         results["weather"] = _run(weather.check)
+        results["calendar"] = _run(calendar.check)
+        results["anthropic"] = _run(llm.check)
 
     results["all_ok"] = all(v.get("ok") for v in results.values())
     return results

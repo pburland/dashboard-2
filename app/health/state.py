@@ -56,6 +56,8 @@ class Episode:
     return_ends_on: date | None = None
     closed_on: date | None = None
     id: int | None = None
+    expected_clear_on: date | None = None       # doctor's estimate; never ends a hold
+    return_days: int | None = None              # override for the return length
 
 
 @dataclass(frozen=True)
@@ -117,6 +119,8 @@ def record_criterion(episode: Episode, key: str, met_on: date) -> Episode:
 
 
 def return_length_days(episode: Episode, return_start: date) -> int:
+    if episode.return_days:
+        return episode.return_days
     hold_days = (return_start - episode.started_on).days
     return max(RETURN_MIN_DAYS, min(RETURN_MAX_DAYS, hold_days))
 
@@ -146,7 +150,7 @@ def gate(episode: Episode | None, signals: MorningSignals, as_of: date) -> Gate:
     if st is Status.HOLD:
         missing = missing_criteria(episode)
         return Gate(st, False, None, 0.0, False, tuple(
-            [f"health hold since {episode.started_on}: {episode.reason}"]
+            [f"health hold since {episode.started_on:%b %-d}: {episode.reason}"]
             + [f"to exit: {EXIT_CRITERIA[k]}" for k in missing]))
     if st is Status.RETURN:
         vol = return_volume(episode, as_of)
@@ -157,3 +161,14 @@ def gate(episode: Episode | None, signals: MorningSignals, as_of: date) -> Gate:
     if st is Status.CAUTION:
         return Gate(st, True, "Z2", 1.0, False, tuple(caution_reasons(signals)))
     return Gate(st, True, None, 1.0, True, ())
+
+
+def provisional(episode: Episode | None, as_of: date) -> Episode | None:
+    """The episode as it would stand on ``as_of`` if clearance comes on the
+    expected date. Only for previewing future weeks; never persisted."""
+    if (episode is None or episode.return_started_on is not None
+            or episode.expected_clear_on is None or as_of < episode.expected_clear_on):
+        return episode
+    on = episode.expected_clear_on
+    length = return_length_days(episode, on)
+    return replace(episode, return_started_on=on, return_ends_on=on + timedelta(days=length - 1))

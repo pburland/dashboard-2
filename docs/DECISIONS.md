@@ -105,3 +105,27 @@ time trial. The bench-225-by-Dec-31 goal is retired.
 A `travel` table holds the itinerary; weather, the heat check and the
 server's "today" follow it, so a Tokyo morning is dated and forecast in
 Tokyo. Past days now use the health episode that covered them.
+
+## 2026-10-04: plan generator, weekly report, best times, Pat-GPT
+- **Plans come from code now**, not hand-written seeds. Each Sunday the
+  week's report sets a volume factor by rules (build ~8% after a good week;
+  hold if 60-85% done or HR drifts; back off 10% after a STOP flag, low
+  readiness or raised resting HR). The generator turns the phase template
+  into sessions, sized by last week's volume, the 10% ramp, 3:1 recovery
+  weeks and long-run caps, then the validator checks it. A long run the
+  rules stop is cut, not shipped. Felipe's Ask Feli let the model write
+  plans; here the model only writes the report narrative and chat answers.
+- **Long-run growth on a short base:** up to +1 mi is never flagged, because
+  2 -> 3 mi is "+50%" but harmless. Above ~10 mi the 10% rule governs.
+- **Previews during a hold** assume clearance on the doctor's expected date
+  and are labelled "if cleared". Nothing is prescribed until clearance is
+  recorded.
+- **Best time** = inside Patrick's windows (weekdays before 8 AM or after
+  6 PM; Saturday; Sunday outside 9 AM-1 PM), clear of work-calendar events,
+  and outdoors the hour that feels closest to ~50°F with the least rain; a
+  heat no-go is never suggested. On a trip the work calendar is ignored.
+- **Pat-GPT** gets a fresh data snapshot each question. Two tools only: log
+  a note, and start a health hold. No tool can end a hold or edit the plan.
+- **Honest result:** at these safe rates after mono, the preview's longest
+  run before a Jan 24 marathon is about 12 mi. That's a run/walk finish at
+  best; a half marathon, or a later full, would fit the build better.

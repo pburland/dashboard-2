@@ -93,8 +93,16 @@ td.t{font-family:inherit;font-size:13px}
 .msg{max-width:85%;padding:10px 12px;border-radius:16px;font-size:14px}
 .msg.me{align-self:flex-end;background:var(--blue);border-bottom-right-radius:4px}
 .msg.ai{align-self:flex-start;background:var(--card2);border-bottom-left-radius:4px}
-.compose{display:flex;gap:8px;margin-top:12px}
-.compose input{flex:1;background:var(--card2);border:0;border-radius:20px;padding:10px 14px;color:var(--ink);font:inherit}
+.compose{display:flex;gap:8px;margin-top:12px;align-items:flex-end}
+.compose input,.compose textarea{flex:1;background:var(--card2);border:0;border-radius:20px;padding:10px 14px;color:var(--ink);font:inherit;resize:none;max-height:140px}
+.compose button{flex:none;width:40px;height:40px;border-radius:50%;border:0;background:var(--blue);color:#fff;font:700 18px inherit;cursor:pointer}
+.compose button:disabled{opacity:.4}
+.msg p{margin:0 0 6px}.msg p:last-child{margin:0}.msg ul{margin:4px 0 6px;padding-left:18px}
+.msg.ai.thinking{color:var(--muted)}
+.msg .acts{font-size:11px;color:var(--green);margin-top:6px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chips button{background:var(--card2);color:var(--ink2);border:0;border-radius:999px;padding:6px 10px;font:12px inherit;font-family:inherit;cursor:pointer}
+.btn-link{background:none;border:0;color:var(--blue);font:600 12px inherit;font-family:inherit;cursor:pointer;text-transform:none;letter-spacing:0}
 .muted{color:var(--muted)}
 [hidden]{display:none!important}
 @media (max-width:520px){
@@ -205,3 +213,18 @@ body{padding-top:env(safe-area-inset-top)}
 .readiness div{background:var(--card2);border-radius:10px;padding:8px 10px}
 .readiness b{display:block;font-family:var(--mono);font-size:18px}
 .readiness span{font-size:11px;color:var(--muted)}
+.when{font-size:13px;color:var(--ink2);margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.when b{color:var(--ink)}
+.brief{font-size:13px;color:var(--ink2);margin-top:8px}
+.n4m .bt{color:var(--teal,#64d2ff)}
+details.pb summary{cursor:pointer;list-style:none}
+details.pb summary::-webkit-details-marker{display:none}
+details.pb .brief{margin:4px 0 2px}
+.pill.prev{background:var(--card2);color:var(--muted);font-size:10px;padding:2px 6px;margin-left:6px}
+.weekhdr{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;padding:14px 0 4px}
+.report h3{font-size:15px;margin:0 0 4px}
+.report p{margin:0 0 8px;color:var(--ink2)}
+.report ul{margin:0 0 8px;padding-left:18px;color:var(--ink2)}
+.report b{color:var(--ink)}
+.report .meta{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 10px}
+@media (max-width:420px){.tabs button{font-size:12px}}

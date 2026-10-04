@@ -24,6 +24,9 @@ DECOUPLING_WARN = 0.05
 DECOUPLING_STOP = 0.08
 EASY_PACE_TOLERANCE_S = 10
 WEEKLY_RAMP_WARN = 0.10
+# On a short base a percentage is meaningless (2 -> 3 mi is +50%): growth of
+# up to this many miles is never flagged.
+LONG_RUN_JUMP_FREE_MI = 1.0
 
 
 def long_run_jump(planned_mi: float, planned_on: date,
@@ -38,7 +41,7 @@ def long_run_jump(planned_mi: float, planned_on: date,
                     {"planned_mi": planned_mi})
     longest = max(prior)
     jump = (planned_mi - longest) / longest
-    if jump <= LONG_RUN_JUMP_WARN:
+    if jump <= LONG_RUN_JUMP_WARN or planned_mi - longest <= LONG_RUN_JUMP_FREE_MI:
         return None
     sev = Severity.STOP if jump > LONG_RUN_JUMP_STOP else Severity.WARN
     cap = round(longest * (1 + LONG_RUN_JUMP_WARN), 1)

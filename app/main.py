@@ -171,11 +171,11 @@ def api_today() -> dict:
 
 
 @app.get("/api/plan", dependencies=[Depends(require_admin)])
-def api_plan(days: int = Query(default=14, ge=1, le=60)) -> list:
+def api_plan(days: int = Query(default=28, ge=1, le=60)) -> dict:
     from app import db, today as view
     with db.connect() as conn:
         t = clock.today()
-        return view.plan(conn, t - timedelta(days=t.weekday()), days)
+        return view.plan(conn, t - timedelta(days=t.weekday()), days, today=t)
 
 
 @app.get("/api/trends", dependencies=[Depends(require_admin)])
@@ -183,6 +183,54 @@ def api_trends() -> dict:
     from app import db, today as view
     with db.connect() as conn:
         return view.trends(conn, clock.today())
+
+
+@app.get("/api/reports", dependencies=[Depends(require_admin)])
+def api_reports() -> list:
+    from app import db, reports
+    with db.connect() as conn:
+        return reports.list_reports(conn)
+
+
+@app.post("/admin/report", dependencies=[Depends(require_admin)])
+def admin_report(week: str | None = Query(default=None, description="Monday, YYYY-MM-DD; default last week")) -> dict:
+    """Write (or rewrite) a weekly report and re-plan the next 3 weeks."""
+    from datetime import date as _date
+    from app import db, reports
+    t = clock.today()
+    ws = _date.fromisoformat(week) if week else t - timedelta(days=t.weekday() + 7)
+    if ws.weekday() != 0:
+        raise HTTPException(400, "week must be a Monday")
+    with db.connect() as conn:
+        r = reports.build(conn, ws, today=t)
+    return {"week_start": r["week_start"], "model": r["model"], "next_week": r["summary"]["next_week"]}
+
+
+@app.post("/api/chat", dependencies=[Depends(require_admin)])
+def api_chat(message: str = Body(..., embed=True, max_length=4000),
+             conversation_id: int | None = Body(default=None, embed=True)) -> dict:
+    from app import chat, db
+    if not message.strip():
+        raise HTTPException(400, "empty message")
+    try:
+        with db.connect() as conn:
+            return chat.ask(conn, message.strip(), conversation_id)
+    except MissingConfig as e:
+        raise HTTPException(503, str(e))
+
+
+@app.get("/api/chat", dependencies=[Depends(require_admin)])
+def api_conversations() -> list:
+    from app import chat, db
+    with db.connect() as conn:
+        return chat.conversations(conn)
+
+
+@app.get("/api/chat/{conversation_id}", dependencies=[Depends(require_admin)])
+def api_conversation(conversation_id: int) -> list:
+    from app import chat, db
+    with db.connect() as conn:
+        return chat.messages(conn, conversation_id)
 
 
 @app.post("/admin/sync", dependencies=[Depends(require_admin)])

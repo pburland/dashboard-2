@@ -66,7 +66,11 @@ def build(conn, today: date, next_days: int = 4) -> dict:
                         "order by finished_at desc limit 1").fetchone()
     rec = conn.execute("select * from recovery where day <= %s order by day desc limit 1", (today,)).fetchone()
     from app import travel
+    from app.planning import timing
     here = travel.place_for(travel.load(conn), today)
+    days = [{"date": today, "sessions": today_sessions}] + \
+           [{"date": d, "sessions": s} for d, s in sorted(upcoming.items())]
+    timing_note = timing.annotate(conn, days, today) if g.prescriptions_allowed else None
     return {
         "today": today,
         "phase": phase,
@@ -87,12 +91,14 @@ def build(conn, today: date, next_days: int = 4) -> dict:
             "avg_hr": a["avg_hr"], "decoupling": a["decoupling"], "load": a["load_trimp"],
             "flags": act_flags.get(a["id"], [])} for a in recent],
         "races": [r | {"days_until": (r["race_date"] - today).days} for r in races],
+        "timing_note": timing_note,
         "last_sync": last,
     }
 
 
-def plan(conn, start: date, days: int) -> list[dict]:
-    """Planned sessions day by day, with matched actuals, for the Plan tab."""
+def plan(conn, start: date, days: int, today: date | None = None) -> dict:
+    """Planned sessions day by day, with matched actuals and the best time
+    for each upcoming one, for the Plan tab."""
     rows = conn.execute(
         """select w.*, a.distance_m as act_m, a.avg_hr as act_hr, a.duration_s as act_s
            from planned_workouts w left join activities a on a.id = w.activity_id
@@ -105,7 +111,12 @@ def plan(conn, start: date, days: int) -> list[dict]:
             s["actual"] = {"mi": round(r["act_m"] / MI, 2), "avg_hr": r["act_hr"],
                            "min": round((r["act_s"] or 0) / 60)}
         out[r["plan_date"]].append(s)
-    return [{"date": d, "sessions": v} for d, v in out.items()]
+    result = [{"date": d, "sessions": v} for d, v in out.items()]
+    note = None
+    if today is not None:
+        from app.planning import timing
+        note = timing.annotate(conn, result, today)
+    return {"days": result, "timing_note": note}
 
 
 def trends(conn, today: date, weeks: int = 10) -> dict:

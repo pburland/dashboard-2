@@ -28,7 +28,7 @@
       <h1>Patrick</h1>
       <div class="sub" id="phase"></div>
     </div>
-    <div class="date"><span id="hdrdate"></span><br><span class="muted">server clock · ET</span></div>
+    <div class="date"><span id="hdrdate"></span><br><span class="muted" id="hdrplace">server clock</span></div>
   </header>
 
   <section class="goals" id="goals" aria-label="Races"></section>
@@ -37,11 +37,27 @@
     <button role="tab" aria-selected="true" data-tab="today">Today</button>
     <button role="tab" aria-selected="false" data-tab="plan">Plan</button>
     <button role="tab" aria-selected="false" data-tab="trends">Trends</button>
+    <button role="tab" aria-selected="false" data-tab="reports">Reports</button>
+    <button role="tab" aria-selected="false" data-tab="ask">Pat-GPT</button>
   </nav>
 
   <main id="today"><div class="loading">Loading…</div></main>
   <main id="plan" hidden><div class="loading">Loading…</div></main>
   <main id="trends" hidden><div class="loading">Loading…</div></main>
+  <main id="reports" hidden><div class="loading">Loading…</div></main>
+  <main id="ask" hidden>
+    <section class="card">
+      <div class="label" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Pat-GPT · knows your plan, health, workouts, weather and calendar</span>
+        <button class="btn-link" id="newchat">New chat</button></div>
+      <div class="chat" id="chatlog"></div>
+      <div class="chips" id="chips"></div>
+      <form class="compose" id="compose">
+        <textarea id="chatin" rows="1" placeholder="Ask about your training…" autocomplete="off"></textarea>
+        <button type="submit" id="chatsend" aria-label="Send">↑</button>
+      </form>
+    </section>
+  </main>
   <div class="sync" id="sync"></div>
 </div>
 <script src="/static/app.js"></script>
