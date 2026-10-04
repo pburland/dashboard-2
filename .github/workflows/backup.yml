@@ -1,0 +1,46 @@
+# Weekly encrypted database backup, kept 90 days as a workflow artifact.
+# Needs two repository secrets (Settings -> Secrets and variables -> Actions):
+#   SUPABASE_DB_URL     same value as in Railway
+#   BACKUP_PASSPHRASE   a long passphrase you keep somewhere safe
+# Decrypt on a Mac:
+#   openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in backup.zip.enc -out backup.zip
+name: Weekly backup
+on:
+  schedule:
+    - cron: "17 8 * * 1"        # Mondays 08:17 UTC (early morning ET)
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install "psycopg[binary]>=3.2"
+      - name: Check secrets
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ] || [ -z "$BACKUP_PASSPHRASE" ]; then
+            echo "::error::Add SUPABASE_DB_URL and BACKUP_PASSPHRASE as repository secrets."; exit 1
+          fi
+      - name: Export and encrypt
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          python -m scripts.backup export backup.zip --with-secrets
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:BACKUP_PASSPHRASE \
+            -in backup.zip -out backup.zip.enc
+          rm backup.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: training-backup-${{ github.run_number }}
+          path: backup.zip.enc
+          retention-days: 90
+          if-no-files-found: error

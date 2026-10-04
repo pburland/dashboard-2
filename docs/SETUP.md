@@ -106,3 +106,17 @@ To force a sync now: `curl -s -X POST -H "X-Admin-Token: $TOKEN" ".../admin/sync
 - **Pat-GPT** (tab in the app) answers from your data. It can save notes and
   start a health hold if you report being sick; it can never end one.
 - `GET /admin/diagnostics` now also checks the calendar and the Anthropic key.
+
+## 8. Backups (free)
+- **Automatic, weekly (encrypted):** a GitHub Action exports the database
+  every Monday and keeps each copy 90 days. One-time setup: GitHub → the repo →
+  **Settings → Secrets and variables → Actions → New repository secret**, add
+  `SUPABASE_DB_URL` (same as Railway) and `BACKUP_PASSPHRASE` (a long phrase;
+  store it in your password manager, since without it the backups can't be opened).
+  Test it: **Actions → Weekly backup → Run workflow**. Copies appear under each
+  run's **Artifacts**.
+- **Any time, from the app:** "Download backup" at the bottom of Today saves
+  a zip of CSVs (opens in Excel). Provider tokens are left out.
+- **Open an encrypted copy:**
+  `openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in backup.zip.enc -out backup.zip`
+- **Restore** (replaces all data): `SUPABASE_DB_URL=... python -m scripts.backup restore backup.zip`

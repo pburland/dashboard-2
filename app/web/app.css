@@ -102,7 +102,7 @@ td.t{font-family:inherit;font-size:13px}
 .msg .acts{font-size:11px;color:var(--green);margin-top:6px}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .chips button{background:var(--card2);color:var(--ink2);border:0;border-radius:999px;padding:6px 10px;font:12px inherit;font-family:inherit;cursor:pointer}
-.btn-link{background:none;border:0;color:var(--blue);font:600 12px inherit;font-family:inherit;cursor:pointer;text-transform:none;letter-spacing:0}
+.btn-link{text-decoration:none;background:none;border:0;color:var(--blue);font:600 12px inherit;font-family:inherit;cursor:pointer;text-transform:none;letter-spacing:0}
 .muted{color:var(--muted)}
 [hidden]{display:none!important}
 @media (max-width:520px){

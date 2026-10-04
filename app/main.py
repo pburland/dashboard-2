@@ -279,6 +279,18 @@ def admin_sync_status() -> dict:
     return {"counts": counts, "runs": runs}
 
 
+@app.get("/admin/backup", dependencies=[Depends(require_admin)])
+def admin_backup():
+    """Download every table as CSVs in one zip (provider tokens left out)."""
+    from app import db
+    from scripts import backup
+    with db.connect() as conn:
+        blob = backup.export(conn)
+    name = f"training-backup-{clock.today().isoformat()}.zip"
+    return Response(blob, media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store"})
+
+
 @app.get("/admin/diagnostics", dependencies=[Depends(require_admin)])
 def diagnostics() -> dict:
     from app.diagnostics import run_all
