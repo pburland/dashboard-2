@@ -250,13 +250,17 @@ def run_tool(conn, name: str, args: dict, today: date, turn_started=None,
         if name == "replan_week":
             return replan(conn, date.fromisoformat(args["week_start"]), today, conversation_id)
         if name == "apply_change":
-            p = conn.execute("select created_at, status from plan_proposals where id = %s",
+            p = conn.execute("select created_at, status, conversation_id from plan_proposals where id = %s",
                              (args["proposal_id"],)).fetchone()
             if not p:
                 return {"applied": False, "error": "no such proposal"}
-            if turn_started is not None and p["created_at"] >= turn_started:
+            # Confirmation must come in a message Patrick sent after the proposal, in this conversation.
+            confirmed = p["conversation_id"] is not None and p["conversation_id"] == conversation_id and conn.execute(
+                """select 1 from messages where conversation_id = %s and role = 'user' and created_at > %s""",
+                (conversation_id, p["created_at"])).fetchone()
+            if not confirmed:
                 return {"applied": False, "error": "Patrick hasn't confirmed this proposal yet. Show it and wait "
-                                                   "for his explicit yes in his next message."}
+                                                   "for his explicit yes in his next message (or the Confirm button)."}
             return changes.apply(conn, args["proposal_id"], args.get("accepted_warns") or [], today)
     except (changes.ChangeError, ValueError, KeyError) as e:
         conn.rollback()

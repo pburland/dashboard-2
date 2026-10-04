@@ -46,16 +46,18 @@ def _same(a: dict, b: dict) -> bool:
     return all(norm(a.get(k)) == norm(b.get(k)) for k in COMPARE)
 
 
-def week_context(conn, ws: date, today: date) -> tuple[list[dict], list[str]]:
-    """(rows Patrick changed himself, gen_keys of key sessions missed so far)."""
+def week_context(conn, ws: date, today: date) -> tuple[list[dict], dict[str, date]]:
+    """(rows Patrick changed himself, {gen_key: day missed} for key sessions missed so far)."""
     end = ws + timedelta(days=6)
     fixed = [dict(r) for r in conn.execute(
         """select * from planned_workouts where plan_date between %s and %s and status in ('planned','done')
            and source = 'chat'""", (ws, end)).fetchall()]
-    missed = [r["structure"]["gen_key"] for r in conn.execute(
-        """select structure from planned_workouts where plan_date between %s and %s and plan_date < %s
-           and activity_id is null and status in ('planned', 'skipped') and is_key
-           and structure ? 'gen_key'""", (ws, end, today)).fetchall()]
+    missed = {r["structure"]["gen_key"]: r["plan_date"] for r in conn.execute(
+        """select structure, plan_date from planned_workouts w where plan_date between %s and %s and plan_date < %s
+           and activity_id is null and status in ('planned', 'skipped') and is_key and structure ? 'gen_key'
+           and not exists (select 1 from planned_workouts d where d.status = 'done'
+                           and d.plan_date between %s and %s and d.structure->>'gen_key' = w.structure->>'gen_key')""",
+        (ws, end, today, ws, end)).fetchall()}
     return fixed, missed
 
 
@@ -96,9 +98,15 @@ def diff(conn, wp: generator.WeekPlan, today: date, preview: bool) -> tuple[list
             ops.append(changes.Op("move", old, new, why))
         else:
             ops.append(changes.Op("modify", old, new))
+    from app import travel
+    stops = travel.load(conn)
     for r in current:
         if r["id"] not in matched:
-            ops.append(changes.Op("remove", r, None, "no longer in the plan", remove_status="superseded"))
+            place = travel.place_for(stops, r["plan_date"])
+            if place.away and r["sport"] not in (place.sports or ()):
+                ops.append(changes.Op("remove", r, None, f"travel: {place.name}", remove_status="skipped"))
+            else:
+                ops.append(changes.Op("remove", r, None, "no longer in the plan", remove_status="superseded"))
     return ops, refresh
 
 
@@ -139,11 +147,12 @@ def sync(conn, wp: generator.WeekPlan, today: date, *, preview: bool, trigger: s
     for msg in wp.needs_review:
         generator_flag(conn, wp.week_start, "needs_review", Severity.WARN, msg)
     conn.execute(
-        """insert into plan_generations (week_start, trigger, inputs_hash, validator_pass, flags)
-           values (%s, %s, %s, %s, %s::jsonb)""",
+        """insert into plan_generations (week_start, trigger, inputs_hash, validator_pass, flags, inputs)
+           values (%s, %s, %s, %s, %s::jsonb, %s::jsonb)""",
         (wp.week_start, trigger, wp.inputs_hash,
          not any(f["severity"] == "stop" for f in wp.flags) and not checked.stops,
-         json.dumps(wp.flags + [dict(f, date=str(f["date"])) for f in checked.flags], default=str)))
+         json.dumps(wp.flags + [dict(f, date=str(f["date"])) for f in checked.flags], default=str),
+         json.dumps(wp.inputs | {"preview": preview}, default=str)))
     conn.commit()
     return result
 
@@ -155,7 +164,6 @@ def generator_flag(conn, ws: date, kind: str, sev: Severity, msg: str) -> None:
     evaluate.save_flag(conn, Flag(kind, sev, msg, {}), ws, "week", sid)
 
 
-def last_hash(conn, ws: date) -> str | None:
-    r = conn.execute("select inputs_hash from plan_generations where week_start = %s order by id desc limit 1",
-                     (ws,)).fetchone()
-    return r["inputs_hash"] if r else None
+def last_generation(conn, ws: date) -> dict | None:
+    return conn.execute("select * from plan_generations where week_start = %s order by id desc limit 1",
+                        (ws,)).fetchone()

@@ -179,6 +179,12 @@ def _week_run_mi(conn, ws: date) -> tuple[float, float]:
     return float(a), float(p)
 
 
+def _week_run_mi_between(conn, start: date, end: date) -> float:
+    return float(conn.execute("""select coalesce(sum(distance_m), 0) / %s as mi from activities
+                                 where sport = 'run' and local_date between %s and %s""",
+                              (MI, start, end)).fetchone()["mi"])
+
+
 def reference_week_mi(conn, before: date) -> float:
     """Pre-illness training volume: the best 4-week average run miles in the
     12 weeks before ``before``."""
@@ -190,13 +196,25 @@ def reference_week_mi(conn, before: date) -> float:
     return round(best, 1)
 
 
-def history(conn, before: date) -> History:
-    runs = conn.execute("""select local_date, distance_m from activities where sport = 'run'
-                           and local_date >= %s and local_date < %s and distance_m > 0""",
-                        (before - timedelta(days=84), before)).fetchall()
+def history(conn, before: date, planned_from: date | None = None) -> History:
+    """Runs before ``before``: completed ones, plus (with ``planned_from``)
+    the runs still planned between that day and ``before``, so a future
+    week is judged against the weeks planned ahead of it."""
+    runs = [(r["local_date"], r["distance_m"] / MI) for r in conn.execute(
+        """select local_date, distance_m from activities where sport = 'run'
+           and local_date >= %s and local_date < %s and distance_m > 0""",
+        (before - timedelta(days=84), before)).fetchall()]
+    if planned_from and planned_from < before:
+        runs += [(r["plan_date"], r["distance_mi"]) for r in conn.execute(
+            """select plan_date, distance_mi from planned_workouts where sport = 'run' and status = 'planned'
+               and distance_mi > 0 and plan_date >= %s and plan_date < %s""", (planned_from, before)).fetchall()]
     ws = before - timedelta(days=before.weekday())
-    weekly = [_week_run_mi(conn, ws - timedelta(days=7 * i))[0] for i in (4, 3, 2, 1)]
-    return History([(r["local_date"], r["distance_m"] / MI) for r in runs], weekly)
+    weekly = []
+    for i in (4, 3, 2, 1):
+        actual, planned = _week_run_mi(conn, ws - timedelta(days=7 * i))
+        future = planned_from is not None and ws - timedelta(days=7 * i) >= planned_from - timedelta(days=6)
+        weekly.append(max(actual, planned) if future else actual)
+    return History(runs, weekly)
 
 
 def volume_bounds(conn, kind: str) -> dict[str, tuple[float, float]]:
@@ -268,7 +286,10 @@ class WeekPlan:
 
     @property
     def inputs_hash(self) -> str:
-        return hashlib.sha1(json.dumps(self.inputs, sort_keys=True, default=str).encode()).hexdigest()[:16]
+        """What the week depends on, minus the volume basis (which follows
+        the weekly report): a change here means the week needs re-planning."""
+        stable = {k: v for k, v in self.inputs.items() if k not in ("basis", "factor")}
+        return hashlib.sha1(json.dumps(stable, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
 def _a_race(conn, d: date) -> dict | None:
@@ -278,7 +299,7 @@ def _a_race(conn, d: date) -> dict | None:
 
 def plan_week(conn, ws: date, *, basis_mi: float, factor: float = 1.0, hist: History | None = None,
               today: date | None = None, cal: Calendar | None = None,
-              fixed: list[dict] | None = None, missed_keys: list[str] | None = None) -> WeekPlan:
+              fixed: list[dict] | None = None, missed_keys: dict[str, date] | None = None) -> WeekPlan:
     """Draft one week. ``fixed``: rows Patrick changed himself (kept as they
     are). ``missed_keys``: gen_keys of key sessions missed earlier this week,
     to be re-placed on a remaining day if a compliant one exists."""
@@ -343,6 +364,9 @@ def plan_week(conn, ws: date, *, basis_mi: float, factor: float = 1.0, hist: His
             ph = phase_for(phases, d)
         except NoPhaseDefined:
             continue
+        if ph.kind == "hold":
+            # Cleared before the hold block in the phase table ends: use the return template.
+            ph = next((p for p in phases if p.kind == "return" and p.start_date > ph.start_date), ph)
         if d in races:
             r = races[d]
             drafts.append(Draft(d, "race", "race", r["name"], zone="race", notes=f"Race day: {r['name']}."))
@@ -369,19 +393,36 @@ def plan_week(conn, ws: date, *, basis_mi: float, factor: float = 1.0, hist: His
     # Sessions Patrick moved himself win; the generator doesn't re-add them.
     fixed_keys = {(r.get("structure") or {}).get("gen_key") for r in fixed} - {None}
     drafts = [x for x in drafts if x.structure.get("gen_key") not in fixed_keys]
+    # Days already past are history: only missed key sessions come forward.
+    missed_keys = dict(missed_keys or {})
+    past_strength = conn.execute(
+        """select count(*) as n from planned_workouts where sport = 'strength' and plan_date between %s and %s
+           and plan_date < %s and status in ('planned', 'done', 'skipped')""",
+        (ws, ws + timedelta(days=6), today)).fetchone()["n"] if today > ws else 0
+    drafts = [x for x in drafts if x.date >= today or x.structure.get("gen_key") in missed_keys]
+    # What's already done this week counts toward its load and volume.
+    done = [PlannedSession(r["plan_date"], r["sport"], r["title"], r["duration_min"] or 0, r["max_zone"] or "Z2",
+                           r["distance_mi"], r["is_long"], bool((r["structure"] or {}).get("heavy_lower")))
+            for r in conn.execute(
+                """select * from planned_workouts where plan_date between %s and %s and plan_date < %s
+                   and status = 'done'""", (ws, ws + timedelta(days=6), today)).fetchall()] if today > ws else []
+    week_target = target
+    if today > ws:
+        target = max(0.0, target - _week_run_mi_between(conn, ws, today - timedelta(days=1)))
 
     # Sizing: runs by the ladder and volume, other sports by phase.
     a_race = _a_race(conn, ws)
     weeks_to_race = ((a_race["race_date"] - timedelta(days=a_race["race_date"].weekday()) - ws).days // 7
                      if a_race else None)
     peak = PEAK_LONG_MI.get(a_race["distance"], 12.0) if a_race else 12.0
-    _size_runs(drafts, target, kind, hist, gate_for, recovery, week_idx, weeks_to_race, peak)
+    _size_runs(drafts, target, kind, hist, gate_for, recovery, week_idx, weeks_to_race, peak, week_target)
     _size_other(drafts, kind, gate_for, weeks_in, recovery, bounds)
 
     # Placement: travel, missed key sessions, free time, strength rules, daily cap.
     review: list[str] = []
-    drafts = _place(drafts, ws, today, gate_for, cal, stops, missed_keys or [], review)
-    drafts = _place_strength(drafts, ws, today, kind, gate_for, stops, returning=g_mid.status is Status.RETURN)
+    drafts = _place(drafts, ws, today, gate_for, cal, stops, missed_keys, review)
+    drafts = _place_strength(drafts, ws, today, kind, gate_for, stops, returning=g_mid.status is Status.RETURN,
+                             already=past_strength)
     cap = ((conn.execute("select daily_minutes from profile where id = 1").fetchone() or {})
            .get("daily_minutes") or {}).get("default", 210)
     _daily_cap(drafts, cap)
@@ -392,7 +433,7 @@ def plan_week(conn, ws: date, *, basis_mi: float, factor: float = 1.0, hist: His
             x.zone, x.kind = "Z2", ("easy" if x.sport in ("run", "bike", "swim") else x.kind)
         _finish(x, g.status is Status.RETURN, is_prov and x.date > today, travel.place_for(stops, x.date))
 
-    flags, drafts = _validate_and_relax(drafts, hist, gate_for, review, today, stops, is_prov)
+    flags, drafts = _validate_and_relax(drafts, hist, gate_for, review, today, stops, is_prov, done)
     if open_days < 5:     # a few sessions in a part-week: load shares mean nothing
         flags = [f for f in flags if f["kind"] != "session_load_share"]
         for x in drafts:
@@ -408,7 +449,7 @@ def plan_week(conn, ws: date, *, basis_mi: float, factor: float = 1.0, hist: His
               "gates": [gate_for(d).status.value for d in days],
               "reasons": [list(gate_for(d).reasons)[:1] for d in days],
               "travel": [travel.place_for(stops, d).name for d in days],
-              "fixed": sorted(fixed_keys), "missed": sorted(missed_keys or []),
+              "fixed": sorted(fixed_keys), "missed": sorted(missed_keys),
               "calendar": cal.fingerprint(ws, ws + timedelta(days=6)) if cal.available else None}
     return WeekPlan(ws, drafts, target, round(run_mi, 1), flags, not drafts, is_prov, ph_mid.kind,
                     inputs, review)
@@ -432,7 +473,10 @@ def _as_session(x: Draft) -> PlannedSession:
 
 
 def _size_runs(drafts: list[Draft], target: float, kind: str, hist: History, gate_for,
-               recovery: bool, week_idx: int, weeks_to_race: int | None, peak: float) -> None:
+               recovery: bool, week_idx: int, weeks_to_race: int | None, peak: float,
+               week_target: float | None = None) -> None:
+    """``target``: miles still to plan this week; ``week_target``: the whole
+    week's (the long run's share is of the whole week, even mid-week)."""
     runs = [x for x in drafts if x.sport == "run"]
     if not runs:
         return
@@ -458,7 +502,7 @@ def _size_runs(drafts: list[Draft], target: float, kind: str, hist: History, gat
             if not recovery:
                 want = min(want, cap)
         else:
-            want = min(left * LONG_SHARE, cap)
+            want = min((week_target or target) * LONG_SHARE, cap, max(left, 2.0))
         x.distance_mi = max(2.0, _round_half(want))
         x.is_long = True
         left -= x.distance_mi
@@ -525,7 +569,7 @@ def _allowed(x: Draft, d: date, gate_for, stops) -> bool:
 
 
 def _place(drafts: list[Draft], ws: date, today: date, gate_for, cal: Calendar, stops,
-           missed_keys: list[str], review: list[str]) -> list[Draft]:
+           missed_keys: dict[str, date], review: list[str]) -> list[Draft]:
     """Travel, missed key sessions and free time. Key sessions move to the
     nearest compliant day (weekends first for long ones); easy sessions that
     can't happen where planned are dropped."""
@@ -544,7 +588,8 @@ def _place(drafts: list[Draft], ws: date, today: date, gate_for, cal: Calendar, 
     for x in sorted(endurance, key=lambda x: (not x.is_key, x.date)):
         if x.kind == "brick":
             continue                                    # travels with its ride
-        missed = x.structure.get("gen_key") in missed_keys
+        missed_on = missed_keys.get(x.structure.get("gen_key"))
+        missed = missed_on is not None and (x.date == missed_on or x.date < today)
         ok_here = (_allowed(x, x.date, gate_for, stops) and not missed and x.date >= today
                    and (not x.is_key or (fits(x, x.date) and x.date not in key_days())))
         if ok_here or (not x.is_key and _allowed(x, x.date, gate_for, stops)):
@@ -557,7 +602,7 @@ def _place(drafts: list[Draft], ws: date, today: date, gate_for, cal: Calendar, 
         weekend = [d for d in days if d.weekday() >= 5] if x.is_long or x.label == "brick" else []
         near = sorted(days, key=lambda d: (abs((d - x.date).days), d))
         for d in dict.fromkeys(weekend + near):
-            if d < today or (d == x.date and (missed or x.date < today)):
+            if d < today or d == missed_on or (d == x.date and x.date < today):
                 continue
             if _allowed(x, d, gate_for, stops) and d not in key_days() and fits(x, d):
                 why = ("missed" if missed else "travel" if not _allowed(x, x.date, gate_for, stops)
@@ -576,14 +621,14 @@ def _place(drafts: list[Draft], ws: date, today: date, gate_for, cal: Calendar, 
 
 
 def _place_strength(drafts: list[Draft], ws: date, today: date, kind: str, gate_for, stops,
-                    returning: bool) -> list[Draft]:
+                    returning: bool, already: int = 0) -> list[Draft]:
     """Friel's concurrent rules as constraints: N sessions a week for the
     phase; never on a key-endurance day; heavy lower body never within 2
     days before a long run or ride. If a template day breaks a rule, the
     strength session moves, not the endurance session."""
     template = [x for x in drafts if x.sport == "strength"]
     endurance = [x for x in drafts if x.sport != "strength"]
-    n = STRENGTH_PER_WEEK.get("return" if returning else kind, 2)
+    n = max(0, STRENGTH_PER_WEEK.get("return" if returning else kind, 2) - already)
     days = [ws + timedelta(days=i) for i in range(7)]
     key_days = {x.date for x in endurance if x.is_key}
     long_days = {x.date for x in endurance if x.is_long or (x.sport == "bike" and x.kind == "long")}
@@ -645,11 +690,21 @@ def _daily_cap(drafts: list[Draft], cap: int) -> None:
 
 
 def _validate_and_relax(drafts: list[Draft], hist: History, gate_for, review: list[str],
-                        today: date, stops, is_prov: bool) -> tuple[list[dict], list[Draft]]:
-    """Validate; on a STOP relax up to 3 times, then drop what still stops."""
+                        today: date, stops, is_prov: bool,
+                        done: list[PlannedSession] | None = None) -> tuple[list[dict], list[Draft]]:
+    """Validate (with this week's completed sessions as context); on a STOP
+    relax up to 3 times, then drop what still stops."""
+    done = done or []
+
     def run():
         sess = [x for x in drafts if x.sport != "race" and x.duration_min]
-        return sess, (validate_week([_as_session(x) for x in sess], hist, gate_for) if sess else None)
+        if not sess:
+            return sess, None
+        v = validate_week(done + [_as_session(x) for x in sess], hist, gate_for)
+        mine = {i - len(done): fl for i, fl in v.flags.items() if i >= len(done)}   # flags on new sessions only
+        v.flags.clear()
+        v.flags.update(mine)
+        return sess, v
 
     sess, v = run()
     for attempt in range(RELAX_ATTEMPTS + 1):

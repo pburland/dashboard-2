@@ -58,6 +58,12 @@ def match_planned(conn, since: date, until: date) -> int:
             conn.execute("update planned_workouts set activity_id = %s, status = 'done' where id = %s",
                          (a["id"], p["id"]))
             n += 1
+    # Strength: a Hevy workout that day completes the planned strength session.
+    n += conn.execute(
+        """update planned_workouts w set status = 'done'
+           where w.sport = 'strength' and w.status = 'planned' and w.plan_date between %s and %s
+             and exists (select 1 from strength_sets s where s.performed_on = w.plan_date and not s.excluded)""",
+        (since, until)).rowcount
     return n
 
 

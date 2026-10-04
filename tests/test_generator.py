@@ -164,3 +164,25 @@ def test_no_compliant_day_is_flagged_for_review(conn):
     wp = g.generate(conn, WS, weeks=1, today=WS - timedelta(days=1), use_calendar=False)[0]
     assert any("Long run" in m for m in wp.needs_review)
     assert conn.execute("select 1 from flags where kind = 'needs_review'").fetchone()
+
+
+@needs_db
+def test_cleared_inside_the_hold_block_uses_the_return_template(conn):
+    # Cleared Sep 28 while the phase table still says "hold" until Oct 14.
+    conn.execute("""update health_episodes set criteria_met = '{"physician_clearance":"2026-09-28",
+                    "fever_free_48h":"2026-09-28","rhr_near_baseline_3d":"2026-09-28"}',
+                    return_started_on = '2026-09-28', return_ends_on = '2026-10-18'""")
+    _history(conn)
+    wp = g.generate(conn, date(2026, 10, 5), weeks=1, today=date(2026, 10, 4), use_calendar=False)[0]
+    assert [x for x in wp.drafts if x.sport == "run"] and not wp.needs_review
+
+
+@needs_db
+def test_preview_weeks_are_checked_against_the_weeks_planned_before_them(conn):
+    conn.execute("""update health_episodes set criteria_met = '{"physician_clearance":"2026-09-28",
+                    "fever_free_48h":"2026-09-28","rhr_near_baseline_3d":"2026-09-28"}',
+                    return_started_on = '2026-09-28', return_ends_on = '2026-10-18'""")
+    _history(conn)
+    wps = g.generate(conn, date(2026, 10, 5), weeks=3, today=date(2026, 10, 4), use_calendar=False)
+    assert not [m for w in wps for m in w.needs_review]
+    assert not conn.execute("select 1 from flags where kind = 'needs_review'").fetchone()

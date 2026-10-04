@@ -84,8 +84,15 @@ def run(kind: str = "manual", days: int = 3, morning: bool = False) -> dict:
                                                              ZoneInfo(here.tz_name))
                 return out
 
-            for name, fn in (("oura", oura), ("baseline", baseline), ("garmin", garmin),
-                             ("hevy", hevy), ("evaluate", evaluate_all)):
+            def rebase_week():
+                from app.ingest import rebase
+                return rebase.run(conn, today)
+
+            steps = [("oura", oura), ("baseline", baseline), ("garmin", garmin), ("hevy", hevy),
+                     ("evaluate", evaluate_all)]
+            if morning:
+                steps.append(("rebase", rebase_week))
+            for name, fn in steps:
                 _step(summary, name, fn, conn)
             for name in ("garmin", "hevy", "oura"):
                 if summary.get(name, {}).get("ok"):

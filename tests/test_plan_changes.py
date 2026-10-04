@@ -110,15 +110,19 @@ def test_chat_cannot_apply_in_the_same_turn_and_undo_restores(conn):
     from app import chat
     from app.planning import changes
     rid = _add(conn, WS + timedelta(days=1), "run", "Easy run", 40, 3.5)
-    turn = datetime.now(timezone.utc) - timedelta(seconds=5)
+    cid = conn.execute("insert into conversations (title) values ('t') returning id").fetchone()["id"]
+    conn.execute("insert into messages (conversation_id, role, content) values (%s, 'user', 'move it')", (cid,))
     p = chat.run_tool(conn, "propose_change", {"actions": [{"action": "move", "workout_id": rid,
                                                             "to": str(WS + timedelta(days=2))}], "reason": "x"},
-                      TODAY, turn)
-    same = chat.run_tool(conn, "apply_change", {"proposal_id": p["proposal_id"]}, TODAY, turn)
+                      TODAY, None, cid)
+    same = chat.run_tool(conn, "apply_change", {"proposal_id": p["proposal_id"]}, TODAY, None, cid)
     assert not same["applied"] and "confirmed" in same["error"]
-    later = chat.run_tool(conn, "apply_change", {"proposal_id": p["proposal_id"]}, TODAY,
-                          datetime.now(timezone.utc) + timedelta(seconds=1))
+    other = chat.run_tool(conn, "apply_change", {"proposal_id": p["proposal_id"]}, TODAY, None, None)
+    assert not other["applied"]                                  # no conversation: the button only
+    conn.execute("insert into messages (conversation_id, role, content) values (%s, 'user', 'yes, do it')", (cid,))
+    later = chat.run_tool(conn, "apply_change", {"proposal_id": p["proposal_id"]}, TODAY, None, cid)
     assert later["applied"]
     changes.undo(conn, later["batch_id"], TODAY)
-    live = conn.execute("select plan_date from planned_workouts where status = 'planned'").fetchall()
+    live = conn.execute("select plan_date from planned_workouts where status = 'planned' and plan_date >= %s",
+                        (WS,)).fetchall()
     assert live == [{"plan_date": WS + timedelta(days=1)}]

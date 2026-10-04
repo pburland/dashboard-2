@@ -345,7 +345,8 @@ async function renderPlan() {
         const meta = [s.distance_mi != null ? `${s.distance_mi} mi` : '', s.duration_min ? `${Math.round(s.duration_min)} min` : ''].filter(Boolean).join(' · ');
         const act = s.actual ? ` <span class="done-chip">✓ ${s.actual.mi} mi · ${Math.round(s.actual.avg_hr || 0)} bpm</span>` : '';
         const cb = st.changed_by;
-        const tag = (st.provisional ? '<span class="pill prev">if cleared</span>' : '')
+        const tag = (s.status === 'skipped' ? '<span class="pill prev">skipped</span>' : '')
+          + (st.provisional ? '<span class="pill prev">if cleared</span>' : '')
           + (cb ? `<span class="pill prev">${esc(cb.by === 'you' ? 'moved by you' : cb.by)} · ${fmt(cb.on, {month: 'short', day: 'numeric'})}</span>` : '');
         const why = cb ? `<div class="brief">Why: ${esc(cb.reason)}${cb.batch && s.status === 'planned' && Date.now() - D(cb.on) < 7 * 864e5
           ? ` <button class="btn-link" data-undo="${esc(cb.batch)}">Undo</button>` : ''}</div>` : '';

@@ -145,3 +145,22 @@ Tokyo. Past days now use the health episode that covered them.
 - **Fuel targets** = RMR x 1.3 + the day's planned training; protein ~1 g/lb.
   A 300 kcal deficit only on easy base days while the body-comp goal is
   active; never during the hold, the return, peak/race weeks or long days.
+
+## 2026-10-04: build brief features 2-5 (check-in, chat edits, generator, auto-rebase)
+- **No medical-restrictions system.** The brief assumed one ("Brief 1"); none
+  exists and Patrick said to ignore it: the mono health hold (clearance
+  expected ~Oct 15) is the only medical rule, enforced by the health gate.
+- **One write path.** Every plan change (chat, generator, rebase) goes
+  through `app/planning/changes.py`: validated first, STOPs refused, WARNs
+  need explicit acceptance (chat/rebase), rows superseded never deleted,
+  each change in `plan_changes`, undo for 7 days.
+- **Chat confirmation** needs a newer user message in the same conversation
+  (or the Confirm button); a proposal can't be applied in the turn that made it.
+- **Check-in** bad/pain -> caution for the check-in day + 2 (shown as the
+  first reason, also during the return phase).
+- **Daily cap 3.5 h on any day** (Patrick), long sessions prefer weekends.
+- **Strength 3/2/1/0 a week** by phase (Friel) - one more than the old base
+  templates; the extra is a moderate full-body session on a non-key day.
+- **Auto-rebase** re-runs the generator; clean -> applied, warn -> proposal
+  on Today, stop -> left alone and flagged for review.
+- **Long-run ladder peak 12.5 mi for a 70.3** (about 2h20 at easy pace).

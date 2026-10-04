@@ -198,7 +198,7 @@ def check(conn, ops: list[Op], today: date) -> Checked:
         current = _week_rows(conn, ws)
         hypo = [r for r in current if r["id"] not in removed] + \
                [r for r in added if ws <= r["plan_date"] <= ws + timedelta(days=6)]
-        hist = generator.history(conn, ws)
+        hist = generator.history(conn, ws, planned_from=today)
         base_v = validate_week([_session(r) for r in current], hist, gate_for) if current else None
         new_v = validate_week([_session(r) for r in hypo], hist, gate_for) if hypo else None
         if not new_v:
@@ -215,7 +215,10 @@ def check(conn, ops: list[Op], today: date) -> Checked:
                 if (f.kind, f.message) in base_msgs:
                     continue
                 add(f.kind, f.severity.value, f.message, r["plan_date"])
+        returning = gate_for(ws + timedelta(days=3)).status.value == "return"
         for f in new_v.week_flags:
+            if returning and f.kind == "weekly_ramp":
+                continue                     # the return phase's own ramp (50% -> 90%) governs
             if (f.kind, f.message) not in base_msgs:
                 add(f.kind, f.severity.value, f.message, None)
         for d in {r["plan_date"] for r in added if ws <= r["plan_date"] <= ws + timedelta(days=6)}:
