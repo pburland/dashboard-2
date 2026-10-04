@@ -8,6 +8,7 @@ included; this one serves only explicit routes.
 from __future__ import annotations
 
 import hmac
+import json
 import logging
 from datetime import timedelta
 from contextlib import asynccontextmanager
@@ -52,7 +53,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-def _replan_in_background() -> None:
+def _replan_in_background(trigger: str = "manual") -> None:
     """A new seed can move phases or the health hold: rebuild this week and
     the two after it so the app never shows a plan from the old rules."""
     import threading
@@ -63,7 +64,7 @@ def _replan_in_background() -> None:
         try:
             t = clock.today()
             with db.connect() as conn:
-                generator.generate(conn, t - timedelta(days=t.weekday()), weeks=3, today=t, trigger="manual")
+                generator.generate(conn, t - timedelta(days=t.weekday()), weeks=3, today=t, trigger=trigger)
                 conn.commit()
             log.warning("re-planned after seed change")
         except Exception:
@@ -181,12 +182,13 @@ def state() -> dict:
 
 
 @app.get("/api/today", dependencies=[Depends(require_admin)])
-def api_today() -> dict:
-    """Today's sessions, the next 4 days, health gate, go/no-go, recent activity."""
+def api_today(checkin: int | None = Query(default=None)) -> dict:
+    """Today's sessions, the next 4 days, health gate, go/no-go, recent activity.
+    ``checkin``: a session id from a "How was it?" notification."""
     from app import db, today as today_view
     try:
         with db.connect() as conn:
-            return today_view.build(conn, clock.today())
+            return today_view.build(conn, clock.today(), checkin_id=checkin)
     except MissingConfig as e:
         raise HTTPException(503, str(e))
 
@@ -210,6 +212,105 @@ def api_checkin(planned_workout_id: int | None = Body(default=None, embed=True),
     except LookupError as e:
         raise HTTPException(404, str(e))
     return {"ok": True, "effects": r["effects"], "check_in_on": r["check_in"]["check_in_on"]}
+
+
+@app.post("/api/checkin/skip", dependencies=[Depends(require_admin)])
+def api_checkin_skip(planned_workout_id: int = Body(..., embed=True),
+                     reason: str | None = Body(default=None, embed=True, pattern="^(busy|tired|sick|weather)$")) -> dict:
+    from app import checkins, db
+    try:
+        with db.connect() as conn:
+            return checkins.skip(conn, planned_workout_id, reason, clock.today())
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+
+
+@app.post("/api/health/clear", dependencies=[Depends(require_admin)])
+def api_health_clear(physician_clearance: bool = Body(..., embed=True),
+                     fever_free_48h: bool = Body(..., embed=True),
+                     rhr_near_baseline_3d: bool = Body(..., embed=True)) -> dict:
+    """"I've been cleared": record all three exit criteria (Patrick confirms
+    each) and start the return phase today; then re-plan."""
+    from app import db
+    from app.health.state import begin_return, record_criterion
+    if not (physician_clearance and fever_free_48h and rhr_near_baseline_3d):
+        raise HTTPException(400, "All three must be true to end the hold.")
+    today = clock.today()
+    with db.connect() as conn:
+        ep = db.open_episode(conn)
+        if ep is None or ep.return_started_on is not None:
+            raise HTTPException(409, "There is no health hold to clear.")
+        for k in ("physician_clearance", "fever_free_48h", "rhr_near_baseline_3d"):
+            ep = record_criterion(ep, k, today)
+        ep = begin_return(ep, today)
+        conn.execute(
+            """update health_episodes set criteria_met = %s::jsonb, return_started_on = %s, return_ends_on = %s,
+               notes = coalesce(notes, '') || %s where id = %s""",
+            (json.dumps({k: v.isoformat() for k, v in ep.criteria_met.items()}), ep.return_started_on,
+             ep.return_ends_on, f" Cleared in the app on {today}: all three criteria confirmed by Patrick.", ep.id))
+        conn.commit()
+    _replan_in_background(trigger="rebase")
+    return {"ok": True, "return_started_on": ep.return_started_on, "return_ends_on": ep.return_ends_on,
+            "message": f"Hold ended. Easy comeback through {ep.return_ends_on:%b %-d}; your plan is being rebuilt."}
+
+
+@app.get("/api/push/key", dependencies=[Depends(require_admin)])
+def api_push_key() -> dict:
+    from app import db
+    from app.integrations import webpush
+    with db.connect() as conn:
+        return {"public_key": webpush.keys(conn)[1]}
+
+
+@app.post("/api/push/subscribe", dependencies=[Depends(require_admin)])
+def api_push_subscribe(request: Request, subscription: dict = Body(..., embed=True)) -> dict:
+    from app import db
+    from app.integrations import webpush
+    if not subscription.get("endpoint") or not (subscription.get("keys") or {}).get("p256dh"):
+        raise HTTPException(400, "invalid subscription")
+    base = load_settings().public_base_url or str(request.base_url).rstrip("/").replace("http://", "https://")
+    with db.connect() as conn:
+        webpush.keys(conn)
+        conn.execute("update integrations set extra = extra || jsonb_build_object('contact', %s::text) "
+                     "where provider = 'vapid'", (base,))
+        conn.execute("""insert into push_subscriptions (endpoint, keys, user_agent) values (%s, %s::jsonb, %s)
+                        on conflict (endpoint) do update set keys = excluded.keys, user_agent = excluded.user_agent""",
+                     (subscription["endpoint"], json.dumps(subscription["keys"]), request.headers.get("user-agent")))
+        conn.commit()
+    return {"ok": True}
+
+
+@app.post("/api/push/test", dependencies=[Depends(require_admin)])
+def api_push_test() -> dict:
+    from app import db, notify
+    with db.connect() as conn:
+        notify.queue(conn, "test", "Test notification", "Notifications are working.", url="/")
+        conn.commit()
+        sent = notify.dispatch(conn, only_tests=True)
+        err = conn.execute("select error from notifications where kind = 'test' and title = 'Test notification' "
+                           "order by id desc limit 1").fetchone()
+    return {"sent": bool(sent), "error": None if sent else (err or {}).get("error")}
+
+
+@app.get("/api/notify/prefs", dependencies=[Depends(require_admin)])
+def api_notify_prefs() -> dict:
+    from app import db, notify
+    with db.connect() as conn:
+        n = conn.execute("select count(*) as n from push_subscriptions").fetchone()["n"]
+        return {"prefs": notify.prefs(conn), "phones": n}
+
+
+@app.post("/api/notify/prefs", dependencies=[Depends(require_admin)])
+def api_notify_prefs_set(prefs: dict = Body(..., embed=True)) -> dict:
+    from app import db, notify
+    clean = {k: bool(v) for k, v in prefs.items() if k in notify.KINDS}
+    with db.connect() as conn:
+        conn.execute("update profile set notification_prefs = notification_prefs || %s::jsonb where id = 1",
+                     (json.dumps(clean),))
+        conn.commit()
+        return {"prefs": notify.prefs(conn)}
 
 
 @app.get("/api/plan/proposals", dependencies=[Depends(require_admin)])

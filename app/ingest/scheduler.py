@@ -72,10 +72,11 @@ def report_week_due(now: datetime, have: set) -> date | None:
 
 
 def _weekly(ws) -> None:
-    from app import reports
+    from app import notify, reports
     runner.run("weekly", days=8)
     with db.connect() as conn:
         reports.build(conn, ws)
+        notify.report_ready(conn, ws)
 
 
 def tick() -> list[str]:
@@ -102,11 +103,17 @@ def tick() -> list[str]:
 
 
 def _loop() -> None:
+    from app import notify
     while True:
         try:
             tick()
         except Exception:
             log.exception("scheduler tick failed")
+        try:
+            with db.connect() as conn:
+                notify.tick(conn)
+        except Exception:
+            log.exception("notification tick failed")
         _time.sleep(TICK_S)
 
 

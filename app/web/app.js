@@ -247,6 +247,8 @@ function checkinCard(p) {
     <div class="ci-q">Any pain?</div><div class="ci-row ci-pain"><button type="button" data-pain="0">No</button><button type="button" data-pain="1">Yes</button></div>
     <input id="ci-where" type="text" placeholder="Where?" maxlength="200" hidden>
     <button class="primary-btn" id="ci-done" disabled>Done.</button>
+    ${p.planned_workout_id && !p.activity_id ? `<div class="ci-skip"><button class="btn-link" id="ci-skip">Didn't do it</button>
+      <div class="ci-row" id="ci-why" hidden>${['busy', 'tired', 'sick', 'weather'].map(r => `<button type="button" data-why="${r}">${r[0].toUpperCase() + r.slice(1)}</button>`).join('')}<button type="button" data-why="">Skip reason</button></div></div>` : ''}
     <div class="n4m" id="ci-msg"></div></section>`;
 }
 
@@ -262,6 +264,15 @@ function wireCheckin() {
     pick('.ci-pain', 'pain', b.dataset.pain === '1', b);
     $('ci-where').hidden = !st.pain; if (st.pain) $('ci-where').focus();
   });
+  if ($('ci-skip')) {
+    $('ci-skip').onclick = () => { $('ci-why').hidden = false; };
+    card.querySelectorAll('[data-why]').forEach(b => b.onclick = async () => {
+      try {
+        const r = await post('/api/checkin/skip', {planned_workout_id: Number(card.dataset.pid), reason: b.dataset.why || null}, 15000);
+        card.innerHTML = `<div class="label">Skipped</div><div>${esc(r.message)}</div>`;
+      } catch (e) { $('ci-msg').textContent = e.message; }
+    });
+  }
   $('ci-done').onclick = async () => {
     $('ci-done').disabled = true;
     try {
@@ -309,7 +320,8 @@ function renderToday(t, cached) {
     + (t.proposals || []).map(p => `<section class="card">${proposalCard(p)}</section>`).join('');
   if (!t.health.prescriptions_allowed) {
     todayHtml += `<section class="card hold"><div class="state"><span class="dot"></span>Health hold</div><h2>No workout today.</h2>
-      <ul class="crit">${t.health.reasons.slice(1).map(r => `<li><span class="box"></span><div class="t">${esc(r.replace('to exit: ', ''))}</div></li>`).join('')}</ul></section>`;
+      <ul class="crit">${t.health.reasons.slice(1).map(r => `<li><span class="box"></span><div class="t">${esc(r.replace('to exit: ', ''))}</div></li>`).join('')}</ul>
+      ${t.health.status === 'hold' ? (new URLSearchParams(location.search).get('clear') ? clearanceForm() : '<button class="primary-btn" id="clearopen">I\'ve been cleared</button>') : ''}</section>`;
   } else if (sessions.length) {
     todayHtml += sessions.map(sessionCard).join('');
     if (!sessions.some(s => s.sport === 'strength')) todayHtml += '<div class="none-line"><b>No lifting today.</b></div>';
@@ -322,7 +334,8 @@ function renderToday(t, cached) {
   todayHtml += fuelCard(t.fuel, t.body);
   todayHtml += gateCard(t.long_run_gate) + readinessCard(t.readiness) + recentCard(t.recent_activities);
   $('today').innerHTML = todayHtml;
-  wireCheckin(); wireProposals($('today'));
+  wireCheckin(); wireProposals($('today')); wireClearance();
+  if ($('clearopen')) $('clearopen').onclick = () => { $('clearopen').outerHTML = clearanceForm(); wireClearance(); };
   const last = t.last_sync ? new Date(t.last_sync.finished_at).toLocaleString('en-US', {weekday: 'short', hour: 'numeric', minute: '2-digit'}) : 'never';
   $('sync').textContent = (cached ? `Offline · showing data from ${new Date(cached).toLocaleString()}. ` : '') + `Last sync ${last}`;
 }
@@ -502,16 +515,93 @@ $('checkconn').onclick = async () => {
   }
 };
 
+// ── phone notifications ─────────────────────────────────────────────────
+const NOTIF_TYPES = [['workout', 'Tomorrow\'s workout (8:30 PM)'], ['checkin', '"How was it?" after a session'],
+  ['safety', 'Safety (readiness, heart rate, heat)'], ['plan', 'Plan changes and changes to confirm'],
+  ['report', 'Weekly report ready'], ['clearance', 'Clearance reminder (during a hold)']];
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+const isStandalone = () => window.navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+function keyBytes(b64) {
+  const s = atob(b64.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - b64.length % 4) % 4));
+  return Uint8Array.from(s, c => c.charCodeAt(0));
+}
+async function turnOnNotifications() {
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') throw new Error('Notifications were not allowed. Turn them on in iPhone Settings > Notifications > Training.');
+  const reg = await navigator.serviceWorker.ready;
+  const {data} = await api('/api/push/key');
+  const sub = await reg.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: keyBytes(data.public_key)});
+  await post('/api/push/subscribe', {subscription: sub.toJSON()}, 15000);
+}
+async function renderNotifPanel() {
+  const el = $('notifpanel');
+  if (isIOS && !isStandalone()) {
+    el.innerHTML = `<section class="card"><div class="label">Notifications</div><p style="margin:0">On iPhone, notifications only work from the Home Screen app: tap Share, then <b>Add to Home Screen</b>, then open Training from your Home Screen and come back here.</p></section>`;
+    return;
+  }
+  if (!('Notification' in window) || !('PushManager' in window)) {
+    el.innerHTML = '<section class="card"><div class="label">Notifications</div><p style="margin:0">This browser can\'t receive notifications.</p></section>';
+    return;
+  }
+  let info = {prefs: {}, phones: 0};
+  try { info = (await api('/api/notify/prefs')).data; } catch {}
+  const on = Notification.permission === 'granted' && info.phones > 0;
+  el.innerHTML = `<section class="card"><div class="label">Notifications</div>
+    ${on ? '<p class="n4m" style="margin:0 0 8px">On for this phone.</p>' : '<button class="primary-btn" id="notifon">Turn on notifications</button>'}
+    ${NOTIF_TYPES.map(([k, label]) => `<label class="ack"><input type="checkbox" data-pref="${k}" ${info.prefs[k] !== false ? 'checked' : ''}> ${esc(label)}</label>`).join('')}
+    <div class="n4m">Quiet 9:30 PM-5:30 AM. At most 4 a day.</div>
+    <button class="ghost-btn" id="notiftest" style="margin-top:10px;width:100%">Send test notification</button>
+    <div class="n4m" id="notifmsg"></div></section>`;
+  const msg = t => { $('notifmsg').textContent = t; };
+  if ($('notifon')) $('notifon').onclick = async () => {
+    try { await turnOnNotifications(); msg('Done. Sending a test...'); await post('/api/push/test', {}, 20000); renderNotifPanel(); }
+    catch (e) { msg(e.message); }
+  };
+  el.querySelectorAll('[data-pref]').forEach(cb => cb.onchange = async () => {
+    try { await post('/api/notify/prefs', {prefs: {[cb.dataset.pref]: cb.checked}}, 15000); } catch (e) { msg(e.message); }
+  });
+  $('notiftest').onclick = async () => {
+    try { const r = await post('/api/push/test', {}, 20000); msg(r.sent ? 'Sent. It should arrive in a few seconds.' : `Not sent: ${r.error || 'unknown error'}`); }
+    catch (e) { msg(e.message); }
+  };
+}
+$('notifbtn').onclick = () => { if ($('notifpanel').innerHTML) $('notifpanel').innerHTML = ''; else renderNotifPanel(); };
+
+// ── clearance ───────────────────────────────────────────────────────────
+function clearanceForm() {
+  return `<div class="prop" id="clearform"><div class="label">I've been cleared</div>
+    <label class="ack"><input type="checkbox" data-c="physician_clearance"> My doctor cleared me to exercise (spleen OK for running and lifting)</label>
+    <label class="ack"><input type="checkbox" data-c="fever_free_48h"> No fever for 48 hours, without fever medicine</label>
+    <label class="ack"><input type="checkbox" data-c="rhr_near_baseline_3d"> Resting heart rate within 5 bpm of normal for 3 mornings</label>
+    <button class="primary-btn" id="clearbtn" disabled>Start my comeback</button><div class="n4m" id="clearmsg"></div></div>`;
+}
+function wireClearance() {
+  const f = $('clearform');
+  if (!f) return;
+  const boxes = [...f.querySelectorAll('[data-c]')];
+  boxes.forEach(b => b.onchange = () => { $('clearbtn').disabled = !boxes.every(x => x.checked); });
+  $('clearbtn').onclick = async () => {
+    $('clearbtn').disabled = true;
+    try {
+      const r = await post('/api/health/clear', Object.fromEntries(boxes.map(b => [b.dataset.c, b.checked])), 20000);
+      f.innerHTML = `<div class="label">Cleared</div><div>${esc(r.message)}</div>`;
+      setTimeout(start, 2500);
+    } catch (e) { $('clearmsg').textContent = e.message; $('clearbtn').disabled = false; }
+  };
+}
+
 // ── start ───────────────────────────────────────────────────────────────
 let starting = false;
 async function start() {
   if (starting) return;
   starting = true;
   try {
-    const {data, cached, why} = await api('/api/today');
+    const qs = new URLSearchParams(location.search);
+    const {data, cached, why} = await api('/api/today' + (qs.get('checkin') ? `?checkin=${encodeURIComponent(qs.get('checkin'))}` : ''));
     $('signin').hidden = true; $('app').hidden = false;
     $('hdrdate').dataset.iso = String(data.today);
     renderToday(data, cached);
+    if (qs.get('tab')) document.querySelector(`.tabs button[data-tab="${qs.get('tab')}"]`)?.click();
     if (why) $('sync').textContent = `${why}. ` + $('sync').textContent;
     else if (lastLoadMs != null) $('sync').textContent += ` · loaded in ${(lastLoadMs / 1000).toFixed(1)}s`;
   } catch (e) {

@@ -18,7 +18,7 @@ def _session(r: dict) -> dict:
             "notes": r["notes"], "status": r["status"], "activity_id": r["activity_id"]}
 
 
-def build(conn, today: date, next_days: int = 4) -> dict:
+def build(conn, today: date, next_days: int = 4, checkin_id: int | None = None) -> dict:
     phases = db.load_phases(conn)
     try:
         p = phase_for(phases, today)
@@ -99,7 +99,7 @@ def build(conn, today: date, next_days: int = 4) -> dict:
             "flags": act_flags.get(a["id"], [])} for a in recent],
         "races": [r | {"days_until": (r["race_date"] - today).days} for r in races],
         "timing_note": timing_note,
-        "pending_checkin": checkins.pending(conn, today),
+        "pending_checkin": checkins.pending(conn, today, checkin_id),
         "proposals": conn.execute(
             "select id, source, explanation as changes, reason, flags from plan_proposals "
             "where status = 'pending' and source = 'system' order by created_at desc limit 3").fetchall(),

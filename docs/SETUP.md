@@ -120,3 +120,9 @@ To force a sync now: `curl -s -X POST -H "X-Admin-Token: $TOKEN" ".../admin/sync
 - **Open an encrypted copy:**
   `openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in backup.zip.enc -out backup.zip`
 - **Restore** (replaces all data): `SUPABASE_DB_URL=... python -m scripts.backup restore backup.zip`
+
+## 9. Phone notifications (iPhone)
+1. In Safari open the app, tap **Share -> Add to Home Screen**, then open **Training** from the Home Screen.
+2. Scroll to the bottom of Today, tap **Notifications -> Turn on notifications**, allow them.
+3. A test notification arrives. Switch individual types on/off in the same panel.
+Nothing to configure on Railway: the server creates its own push signing key on first use.

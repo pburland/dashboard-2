@@ -28,7 +28,9 @@ LOOKAHEAD_WEEKS = 2       # this week and next
 def _missed(conn, today: date, gate_for) -> list[dict]:
     rows = conn.execute(
         """select * from planned_workouts where plan_date < %s and plan_date >= %s and status = 'planned'
-           and activity_id is null and sport <> 'race' order by plan_date""",
+           and activity_id is null and sport <> 'race'
+           and not exists (select 1 from check_ins c where c.planned_workout_id = planned_workouts.id)
+           order by plan_date""",
         (today, today - timedelta(days=7))).fetchall()
     return [dict(r) for r in rows if gate_for(r["plan_date"]).prescriptions_allowed]
 

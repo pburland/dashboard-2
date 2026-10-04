@@ -22,9 +22,19 @@ SPORT_WORD = {"run": "run", "bike": "ride", "swim": "swim", "strength": "session
 
 
 # ── what is waiting for a check-in ───────────────────────────────────────
-def pending(conn, today: date) -> dict | None:
+def pending(conn, today: date, planned_workout_id: int | None = None) -> dict | None:
     """The most recent finished session without a check-in: a matched planned
-    session from the last 2 days, else yesterday's extra (unplanned) activity."""
+    session from the last 2 days, else yesterday's extra (unplanned) activity.
+    With ``planned_workout_id`` (a notification tap), that session, even
+    before Garmin has synced it."""
+    if planned_workout_id:
+        r = conn.execute(
+            """select w.id as planned_workout_id, w.activity_id, w.plan_date as date, w.title, w.sport
+               from planned_workouts w where w.id = %s and w.status in ('planned','done')
+                 and not exists (select 1 from check_ins c where c.planned_workout_id = w.id)""",
+            (planned_workout_id,)).fetchone()
+        if r:
+            return dict(r)
     r = conn.execute(
         """select w.id as planned_workout_id, w.activity_id, w.plan_date as date, w.title, w.sport
            from planned_workouts w
@@ -180,3 +190,31 @@ def rpe_trend(conn, start: date, end: date) -> list[dict]:
             out.append({"day": d, "rpe7": round(sum(win) / len(win), 1)})
         d += timedelta(days=1)
     return out
+
+
+SKIP_REASONS = ("busy", "tired", "sick", "weather")
+
+
+def skip(conn, planned_workout_id: int, reason: str | None, today: date) -> dict:
+    """"Didn't do it": mark the session skipped now, so the next morning's
+    re-plan can move a missed key session."""
+    from app.planning import changes
+    r = conn.execute("select * from planned_workouts where id = %s", (planned_workout_id,)).fetchone()
+    if not r:
+        raise LookupError("no such planned workout")
+    if r["status"] != "planned":
+        raise ValueError(f"this session is already {r['status']}")
+    why = f"you skipped it ({reason})" if reason else "you skipped it"
+    op = changes.Op("remove", dict(r), None, reason or "", remove_status="skipped")
+    changes.write(conn, [op], changes.Checked([op], []), source="chat", reason=why)
+    msg = "Marked skipped."
+    if r["is_key"]:
+        msg += " Tomorrow morning's check will try to fit it in later this week."
+    if reason == "sick":
+        conn.execute("""insert into weekly_notes (week_start, note_date, type, text, source)
+                        values (%s, %s, 'illness', %s, 'checkin')""",
+                     (r["plan_date"] - timedelta(days=r["plan_date"].weekday()), r["plan_date"],
+                      f"Skipped {r['title']}: felt sick."))
+        msg += " Noted as illness. If you have a fever, tell Pat-GPT so it can pause training."
+    conn.commit()
+    return {"ok": True, "message": msg}

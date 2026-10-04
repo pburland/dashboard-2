@@ -7,3 +7,4 @@ psycopg-pool>=3.2
 icalendar>=6
 recurring-ical-events>=3
 anthropic>=0.40
+cryptography>=43

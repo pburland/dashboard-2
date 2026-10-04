@@ -164,3 +164,15 @@ Tokyo. Past days now use the health episode that covered them.
 - **Auto-rebase** re-runs the generator; clean -> applied, warn -> proposal
   on Today, stop -> left alone and flagged for review.
 - **Long-run ladder peak 12.5 mi for a 70.3** (about 2h20 at easy pace).
+
+## 2026-10-04: phone notifications (decided with Patrick)
+iPhone Home Screen app only; full detail on the lock screen. Tomorrow's
+workout at 8:30 PM (training days only); a 5:45 AM update only if safety or
+the plan changed overnight; "How was it?" 1 h after the suggested end, with
+a "Didn't do it" option; weekly report ready; during a hold only the report
+and a clearance nudge (expected date, then every 3 days). Quiet 9:30 PM -
+5:30 AM local time, max 4 a day with extras folded into one. Web push is
+implemented directly on `cryptography` (RFC 8291/8292) because the usual
+library failed to build here; the round trip is tested by decrypting the
+way a browser does. The "I've been cleared" button records all three exit
+criteria as confirmed by Patrick (his choice) and starts the 21-day return.
