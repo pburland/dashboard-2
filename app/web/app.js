@@ -370,6 +370,25 @@ async function renderTrends() {
   } catch (e) { if (e.auth) return showSignin('Signed out on this device. Paste your token again.'); $('trends').innerHTML = errorCard('Trends', e.why || e.message); }
 }
 
+// ── connections check ───────────────────────────────────────────────────
+const CONN_NAMES = {database: 'Database', garmin: 'Garmin', hevy: 'Hevy', oura: 'Oura', weather: 'Weather',
+                    calendar: 'Work calendar', anthropic: 'Pat-GPT (Anthropic)'};
+$('checkconn').onclick = async () => {
+  $('connresult').innerHTML = '<section class="card"><div class="muted">Checking… (up to 30 s)</div></section>';
+  try {
+    const {data} = await api('/admin/diagnostics');
+    const rows = Object.entries(CONN_NAMES).filter(([k]) => data[k]).map(([k, name]) => {
+      const r = data[k];
+      const why = r.ok ? '' : r.not_configured ? `not set up: ${r.not_configured.join(', ')}` : (r.error || 'failed');
+      return `<div class="cond"><span class="pill ${r.ok ? 'ok' : 'stop'}">${r.ok ? '✓' : '✕'}</span><span><b>${esc(name)}</b>${why ? `<br><span class="muted">${esc(why)}</span>` : ''}</span></div>`;
+    }).join('');
+    $('connresult').innerHTML = `<section class="card"><div class="label">Connections</div>${rows}</section>`;
+  } catch (e) {
+    if (e.auth) return showSignin('Signed out on this device. Paste your token again.');
+    $('connresult').innerHTML = errorCard('Connections', e.why || e.message);
+  }
+};
+
 // ── start ───────────────────────────────────────────────────────────────
 let starting = false;
 async function start() {
