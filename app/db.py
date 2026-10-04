@@ -84,7 +84,7 @@ def races(conn: psycopg.Connection) -> list[dict]:
     return conn.execute(
         "select id, name, race_date, distance, priority, goal_time::text, "
         "stretch_time::text, status, decision_date, decision_rule "
-        "from races where status <> 'dropped' order by race_date"
+        "from races where status not in ('dropped', 'deferred') order by race_date"
     ).fetchall()
 
 

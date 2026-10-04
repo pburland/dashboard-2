@@ -198,6 +198,16 @@ function recentCard(acts) {
   }).join('')}</section>`;
 }
 
+function fuelCard(f, b) {
+  if (!f) return '';
+  const n = x => Number(x).toLocaleString('en-US');
+  const body = b ? `<div class="n4m" style="margin-top:8px">${b.source === 'dexa' ? 'DEXA' : 'Weight'} ${fmt(b.day, {month: 'short', day: 'numeric'})}: ${esc(b.weight_lb)} lb${b.bf_pct != null ? ` · ${esc(b.bf_pct)}% fat` : ''}${b.lean_lb != null ? ` · ${Math.round(b.lean_lb)} lb lean` : ''}</div>` : '';
+  return `<section class="card"><div class="label">Fuel today</div>
+    <div class="readiness"><div><b>${n(f.kcal)}</b><span>calories</span></div>
+    <div><b>${f.protein_g}g</b><span>protein</span></div><div><b>${f.carbs_g}g</b><span>carbs</span></div></div>
+    ${f.why.length ? `<div class="n4m" style="margin-top:8px">${esc(f.why.join('; '))}</div>` : ''}${body}</section>`;
+}
+
 function statusLine(h, phase) {
   const cls = {clear: 'blue', caution: 'warn', hold: 'stop', return: 'ok'}[h.status];
   const label = {clear: phase.name || 'Training', caution: 'Caution today', hold: 'Health hold', return: 'Return to training'}[h.status];
@@ -229,6 +239,7 @@ function renderToday(t, cached) {
   const n4 = t.next_days.length ? next4(t.next_days)
     : `<div class="n4m">${t.health.prescriptions_allowed ? 'Nothing planned yet.' : 'Nothing during the hold. The Plan tab shows what follows once you\'re cleared.'}</div>`;
   todayHtml += `<section class="card"><div class="label">Next 4 days</div>${n4}${t.timing_note ? `<div class="n4m" style="margin-top:8px">Best times without: ${esc(t.timing_note)}</div>` : ''}</section>`;
+  todayHtml += fuelCard(t.fuel, t.body);
   todayHtml += gateCard(t.long_run_gate) + readinessCard(t.readiness) + recentCard(t.recent_activities);
   $('today').innerHTML = todayHtml;
   const last = t.last_sync ? new Date(t.last_sync.finished_at).toLocaleString('en-US', {weekday: 'short', hour: 'numeric', minute: '2-digit'}) : 'never';

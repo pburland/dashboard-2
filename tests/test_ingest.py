@@ -207,10 +207,12 @@ def test_mono_hold_rebase(conn_now):
     t = view.build(conn_now, date(2026, 10, 5))
     assert t["health"]["status"] == "hold" and not t["sessions"]
     assert t["phase"]["name"] == "Health hold (mono)"
+    assert t["phase"]["start"] == date(2026, 9, 15)                 # one hold from Sep 15
     names = [r["name"] for r in t["races"]]
-    assert "Marine Corps Marathon" not in names and "January marathon (race TBD)" in names
-    # September history still reads as it happened: the return phase, not mono.
-    assert view.build(conn_now, date(2026, 9, 25))["health"]["status"] == "return"
+    assert names == ["IRONMAN 70.3 Puerto Rico", "IRONMAN Lake Placid"]   # MCM dropped, Jan marathon on hold
+    # The early "clearance" is superseded: Sep 25 is inside the mono hold.
+    assert view.build(conn_now, date(2026, 9, 25))["health"]["status"] == "hold"
+    assert t["fuel"]["kcal"] == 2550 and t["body"]["bf_pct"] == 19.4
     stops = travel.load(conn_now)
     assert travel.place_for(stops, date(2026, 11, 12)).name == "Tokyo"
     assert travel.place_for(stops, date(2026, 11, 24)).name == "Home"

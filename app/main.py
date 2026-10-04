@@ -45,9 +45,30 @@ async def lifespan(_app: FastAPI):
     if MIGRATIONS.get("status") == "ok":
         from app import travel
         clock.set_resolver(travel.current_tz)
+        if any(a.startswith("seed/") for a in MIGRATIONS.get("applied", [])):
+            _replan_in_background()
         from app.ingest import scheduler
         MIGRATIONS["scheduler"] = "on" if scheduler.start() else "off"
     yield
+
+
+def _replan_in_background() -> None:
+    """A new seed can move phases or the health hold: rebuild this week and
+    the two after it so the app never shows a plan from the old rules."""
+    import threading
+
+    def go():
+        from app import db
+        from app.planning import generator
+        try:
+            t = clock.today()
+            with db.connect() as conn:
+                generator.generate(conn, t - timedelta(days=t.weekday()), weeks=3, today=t)
+                conn.commit()
+            log.warning("re-planned after seed change")
+        except Exception:
+            log.exception("re-plan after seed change failed")
+    threading.Thread(target=go, daemon=True).start()
 
 
 app = FastAPI(title="Training system", docs_url=None, redoc_url=None, openapi_url=None,

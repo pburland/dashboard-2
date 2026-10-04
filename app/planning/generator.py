@@ -38,7 +38,8 @@ EASY_MIN_PER_MI = 11.0
 HR_CAP, WALK_OVER = 140, 150
 MAX_RAMP = 1.10
 LONG_SHARE = 0.33
-LONG_CAP_MI = {"base": 14.0, "build": 18.0, "peak": 18.0, "race": 13.0, "return": 8.0, "transition": 3.0}
+# Run long-run caps for a 70.3 build (a marathon block would raise build/peak).
+LONG_CAP_MI = {"base": 12.0, "build": 13.0, "peak": 13.0, "race": 8.0, "return": 8.0, "transition": 3.0}
 RECOVERY_EVERY = 4            # 3 weeks building, 1 lighter (Friel)
 RECOVERY_FACTOR = 0.8
 PHASE_FACTOR = {"race": 0.7, "transition": 0.3}
@@ -190,6 +191,9 @@ def plan_week(conn, ws: date, *, basis_mi: float, factor: float = 1.0, hist: His
                                             "message": f"No phase covers {mid}."}], True, False)
     g_mid = gate_for(mid)
     recovery = False
+    ep_mid = provisional(episode, mid) if mid > today else episode
+    back = (ep_mid.return_ends_on + timedelta(days=1)) if ep_mid and ep_mid.return_ends_on else None
+    weeks_in = max(0, (ws - back).days // 7) if back and back <= ws + timedelta(days=6) else 8
     if g_mid.status is Status.RETURN:
         ep = provisional(episode, mid) if mid > today else episode
         start = (ep or episode).started_on if (ep or episode) else ws
@@ -232,9 +236,14 @@ def plan_week(conn, ws: date, *, basis_mi: float, factor: float = 1.0, hist: His
             continue
         _, strength_label, endurance_label = row
         returning = g.status is Status.RETURN
-        for sport, kind in parse_endurance(endurance_label):
+        parts = parse_endurance(endurance_label)
+        if ("brick", "brick") in parts:
+            # One ride, then the run off it: long if the label says so.
+            long_brick = ("bike", "long") in parts or "long" in (endurance_label or "").lower()
+            parts = [p for p in parts if p[0] != "bike"]
+        for sport, kind in parts:
             if sport == "brick":
-                drafts.append(Draft(d, "bike", "long", "Brick: bike", is_long=False))
+                drafts.append(Draft(d, "bike", "long" if long_brick else "easy", "Brick: bike"))
                 drafts.append(Draft(d, "run", "brick", "Brick: run off the bike", distance_mi=2.0))
             else:
                 drafts.append(Draft(d, sport, kind, ""))
@@ -252,7 +261,7 @@ def plan_week(conn, ws: date, *, basis_mi: float, factor: float = 1.0, hist: His
                       or (x.sport == "strength" and x.kind == "bodyweight" and allowed)]
 
     _size_runs(drafts, target, ph_mid.kind, hist, gate_for, recovery)
-    _size_other(drafts, ph_mid.kind, gate_for)
+    _size_other(drafts, ph_mid.kind, gate_for, weeks_in, recovery)
     for x in drafts:
         g = gate_for(x.date)
         if g.intensity_ceiling == "Z2" and x.zone not in ("Z1", "Z2", "race"):
@@ -355,10 +364,12 @@ def _size_runs(drafts: list[Draft], target: float, kind: str, hist: History, gat
 
 SWIM_MIN = {"return": 25, "base": 35, "build": 45, "peak": 45, "race": 25, "transition": 30}
 BIKE_MIN = {"return": 35, "base": 50, "build": 60, "peak": 60, "race": 35, "transition": 40}
-LONG_BIKE_MIN = {"base": 90, "build": 120, "peak": 150, "race": 60}
+# Long ride: starts at 75 min, +15 min a building week, up to the phase cap.
+LONG_BIKE_START, LONG_BIKE_STEP = 75, 15
+LONG_BIKE_CAP = {"base": 150, "build": 180, "peak": 210, "race": 60, "transition": 60}
 
 
-def _size_other(drafts: list[Draft], kind: str, gate_for) -> None:
+def _size_other(drafts: list[Draft], kind: str, gate_for, weeks_in: int = 0, recovery: bool = False) -> None:
     for x in drafts:
         returning = gate_for(x.date).status is Status.RETURN
         k = "return" if returning else kind
@@ -366,7 +377,11 @@ def _size_other(drafts: list[Draft], kind: str, gate_for) -> None:
             x.duration_min = SWIM_MIN.get(k, 35)
             x.zone = "Z3" if x.kind == "css" else "Z2"
         elif x.sport == "bike":
-            x.duration_min = LONG_BIKE_MIN.get(k, 60) if x.kind == "long" else BIKE_MIN.get(k, 45)
+            if x.kind == "long" and not returning:
+                build = min(LONG_BIKE_CAP.get(k, 120), LONG_BIKE_START + LONG_BIKE_STEP * weeks_in)
+                x.duration_min = round(build * (0.75 if recovery else 1.0) / 5) * 5
+            else:
+                x.duration_min = BIKE_MIN.get(k, 45)
             x.zone = "Z4" if x.kind == "threshold" else "Z2"
             x.is_long = x.kind == "long" and not returning
 

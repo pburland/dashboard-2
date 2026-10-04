@@ -129,3 +129,19 @@ Tokyo. Past days now use the health episode that covered them.
 - **Honest result:** at these safe rates after mono, the preview's longest
   run before a Jan 24 marathon is about 12 mi. That's a run/walk finish at
   best; a half marathon, or a later full, would fit the build better.
+
+## 2026-10-04 (later): one mono hold from Sep 15; 70.3 focus; DEXA and RMR
+- **Mono is one hold, Sep 15 -> clearance (expected Oct 15).** The Sep 23
+  clearance and Sep 23 - Oct 2 return came before the diagnosis and are
+  superseded; runs done then stay in history. Return after clearance: 21 days.
+- **January marathon on hold** (status `deferred`, hidden). Base 3
+  (Dec 21 - Jan 17) replaces the marathon block, giving swim and bike six
+  more weeks. Run long-run caps are set for a 70.3 (12-13 mi). The long ride
+  grows 15 min a building week to ~3 h in build and ~3.5 h at peak.
+- **DEXA Sep 18:** 160 lb, 19.4% fat, 124 lb lean, bone density normal.
+  Left leg has 6% less lean mass than the right (worth raising at the bike fit).
+- **RMR Sep 23:** 1,958 kcal/day measured (+12% vs predicted). Both tests were
+  during mono, which can raise resting burn, so retest in January.
+- **Fuel targets** = RMR x 1.3 + the day's planned training; protein ~1 g/lb.
+  A 300 kcal deficit only on easy base days while the body-comp goal is
+  active; never during the hold, the return, peak/race weeks or long days.

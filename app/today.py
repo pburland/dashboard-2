@@ -61,7 +61,7 @@ def build(conn, today: date, next_days: int = 4) -> dict:
     races = conn.execute(
         "select name, race_date, distance, priority, goal_time::text as goal_time, "
         "stretch_time::text as stretch_time, status, decision_date from races "
-        "where race_date >= %s and status <> 'dropped' order by priority", (today,)).fetchall()
+        "where race_date >= %s and status not in ('dropped', 'deferred') order by priority", (today,)).fetchall()
     last = conn.execute("select kind, finished_at, ok from sync_runs where finished_at is not null "
                         "order by finished_at desc limit 1").fetchone()
     rec = conn.execute("select * from recovery where day <= %s order by day desc limit 1", (today,)).fetchone()
@@ -71,6 +71,13 @@ def build(conn, today: date, next_days: int = 4) -> dict:
     days = [{"date": today, "sessions": today_sessions}] + \
            [{"date": d, "sessions": s} for d, s in sorted(upcoming.items())]
     timing_note = timing.annotate(conn, days, today) if g.prescriptions_allowed else None
+    from app import nutrition
+    prof = conn.execute("select rmr_kcal from profile where id = 1").fetchone() or {}
+    body = conn.execute("select day, weight_lb, bf_pct, lean_lb, fat_lb, source from body_metrics "
+                        "where weight_lb is not null and day <= %s order by day desc limit 1", (today,)).fetchone()
+    deficit_goal = bool(conn.execute("select 1 from goals where kind = 'body_comp' and status = 'active'").fetchone())
+    fuel = nutrition.targets(prof.get("rmr_kcal"), body and body["weight_lb"], today_sessions,
+                             health=g.status.value, phase_kind=phase.get("kind"), deficit_goal=deficit_goal)
     return {
         "today": today,
         "phase": phase,
@@ -92,6 +99,8 @@ def build(conn, today: date, next_days: int = 4) -> dict:
             "flags": act_flags.get(a["id"], [])} for a in recent],
         "races": [r | {"days_until": (r["race_date"] - today).days} for r in races],
         "timing_note": timing_note,
+        "fuel": fuel,
+        "body": body,
         "last_sync": last,
     }
 

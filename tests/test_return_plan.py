@@ -88,3 +88,16 @@ def test_sixteen_on_oct10_needs_13_5_on_oct3():
     fallback = long_run_jump(16.0, date(2026, 10, 10), base + [(date(2026, 10, 3), 10.0)])
     assert fallback.severity is Severity.STOP
     assert long_run_jump(13.5, date(2026, 10, 3), base) is None
+
+
+def test_fuel_targets():
+    from app import nutrition
+    run = {"sport": "run", "distance_mi": 5, "duration_min": 55, "max_zone": "Z2"}
+    hold = nutrition.targets(1958, 160, [], health="hold", phase_kind="hold", deficit_goal=True)
+    assert hold["kcal"] == 2550 and hold["protein_g"] == 160 and hold["training_kcal"] == 0
+    easy = nutrition.targets(1958, 160, [run], health="clear", phase_kind="base", deficit_goal=True)
+    assert easy["kcal"] == round(1958 * 1.3 + 5 * 160 * 0.72 - 300, -1)
+    long = nutrition.targets(1958, 160, [run | {"distance_mi": 10, "is_long": True}],
+                             health="clear", phase_kind="base", deficit_goal=True)
+    assert not any("under maintenance" in w for w in long["why"]) and long["carbs_g"] == 510
+    assert nutrition.targets(None, 160, [], health="clear", phase_kind="base", deficit_goal=True) is None

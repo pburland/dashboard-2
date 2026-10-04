@@ -103,7 +103,10 @@ def context(conn, today: date) -> dict:
         "weekly_reports": [{"week_start": r["week_start"], "narrative": r["narrative"],
                             "decision": (r["summary"] or {}).get("decision")} for r in reps],
         "notes_45d": notes,
-        "body": body,
+        "body_latest": body,
+        "fuel_today": t.get("fuel"),
+        "resting_metabolic_rate": conn.execute(
+            "select rmr_kcal, rmr_measured_on, rmr_note from profile where id = 1").fetchone(),
         "weather_next_3_days": _weather(conn, today),
         "work_calendar_busy_next_3_days": _busy(today),
     }
