@@ -138,7 +138,8 @@ def long_run_gate(conn, plan: dict, today: date) -> dict:
       3. no fever signal (temperature +0.5°C) and no illness note since the return
     Verdict: go (all pass), fallback (any fail), pending (otherwise)."""
     target = plan["plan_date"]
-    ep = conn.execute("select * from health_episodes order by started_on desc limit 1").fetchone()
+    ep = conn.execute("select * from health_episodes where started_on <= %s order by started_on desc limit 1",
+                      (target,)).fetchone()
     since = (ep and ep["return_started_on"]) or (target - timedelta(days=10))
     last_day = min(today, target - timedelta(days=1))
     conds = []

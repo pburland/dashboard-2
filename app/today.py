@@ -27,7 +27,7 @@ def build(conn, today: date, next_days: int = 4) -> dict:
         phase = {"error": str(e)}
 
     signals = evaluate.morning_signals(conn, today)
-    g = health_gate(db.open_episode(conn), signals, today)
+    g = health_gate(db.open_episode(conn, today), signals, today)
 
     plans = conn.execute(
         "select * from planned_workouts where plan_date between %s and %s and status <> 'superseded' "
@@ -61,13 +61,16 @@ def build(conn, today: date, next_days: int = 4) -> dict:
     races = conn.execute(
         "select name, race_date, distance, priority, goal_time::text as goal_time, "
         "stretch_time::text as stretch_time, status, decision_date from races "
-        "where race_date >= %s order by priority", (today,)).fetchall()
+        "where race_date >= %s and status <> 'dropped' order by priority", (today,)).fetchall()
     last = conn.execute("select kind, finished_at, ok from sync_runs where finished_at is not null "
                         "order by finished_at desc limit 1").fetchone()
     rec = conn.execute("select * from recovery where day <= %s order by day desc limit 1", (today,)).fetchone()
+    from app import travel
+    here = travel.place_for(travel.load(conn), today)
     return {
         "today": today,
         "phase": phase,
+        "where": {"place": here.name, "away": here.away, "sports": list(here.sports or []), "note": here.note},
         "health": {"status": g.status.value, "prescriptions_allowed": g.prescriptions_allowed,
                    "intensity_ceiling": g.intensity_ceiling, "volume_multiplier": g.volume_multiplier,
                    "reasons": list(g.reasons)},

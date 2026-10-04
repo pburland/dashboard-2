@@ -159,7 +159,8 @@ function statusLine(h, phase) {
 
 function renderToday(t, cached) {
   $('hdrdate').textContent = fmt(t.today, {weekday: 'short', month: 'short', day: 'numeric'}).toUpperCase();
-  $('phase').textContent = t.phase.name ? `${t.phase.name} · ends ${fmt(t.phase.end, {month: 'short', day: 'numeric'})}` : '';
+  $('phase').textContent = (t.phase.name ? `${t.phase.name} · ends ${fmt(t.phase.end, {month: 'short', day: 'numeric'})}` : '')
+    + (t.where && t.where.away ? ` · ${t.where.place}` : '');
   $('goals').innerHTML = t.races.map((r, i) => `<div class="goal${i === 0 ? ' primary' : ''}">
       <span class="bar" style="background:${['var(--blue)', 'var(--green)', 'var(--orange)'][i] || 'var(--muted)'}"></span>
       <div class="badge">Goal #${r.priority} · ${esc(r.distance)}${r.status === 'uncertain' ? ' · uncertain' : ''}</div>

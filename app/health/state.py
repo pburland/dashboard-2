@@ -35,7 +35,7 @@ class Status(str, Enum):
 # Every one must be recorded (with the date it was met) to leave HOLD.
 EXIT_CRITERIA: dict[str, str] = {
     "fever_free_48h": "Fever-free for at least 48 hours without fever-reducing medication",
-    "physician_clearance": "Physician has cleared a return to exercise (for a suspected tick-borne illness, ask specifically about the heart)",
+    "physician_clearance": "Physician has cleared a return to exercise (for mono: spleen back to normal, cleared for running and lifting)",
     "rhr_near_baseline_3d": "Resting HR within 5 bpm of pre-illness baseline for 3 consecutive days",
 }
 
@@ -96,7 +96,7 @@ def caution_reasons(s: MorningSignals) -> list[str]:
 
 
 def status(episode: Episode | None, signals: MorningSignals, as_of: date) -> Status:
-    if episode is not None and episode.closed_on is None:
+    if episode is not None and (episode.closed_on is None or as_of <= episode.closed_on):
         if episode.return_started_on is None:
             return Status.HOLD
         if episode.return_ends_on is not None and as_of <= episode.return_ends_on:

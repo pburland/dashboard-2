@@ -97,14 +97,30 @@ class FakeGarmin:
         return SEP23_SPLITS if str(aid) == "24474801626" else LONG_SPLITS
 
 
-@pytest.fixture
-def conn(monkeypatch):
+def _fresh_db(monkeypatch, last_seed: str | None):
+    """Schema plus seeds up to ``last_seed`` (None = all of them)."""
     from scripts import migrate
     with psycopg.connect(DB, autocommit=True) as c:
         c.execute("drop schema public cascade; create schema public")
-    migrate.run(DB, seed=True)
+    files = [f for f in migrate.files(seed=True)
+             if last_seed is None or f.parent.name != "seed" or f.name <= last_seed]
+    with psycopg.connect(DB, autocommit=True) as c:
+        migrate.apply(c, files)
     monkeypatch.setattr("app.ingest.garmin.LAP_DELAY_S", 0)
-    with psycopg.connect(DB, row_factory=dict_row) as c:
+    return psycopg.connect(DB, row_factory=dict_row)
+
+
+@pytest.fixture
+def conn(monkeypatch):
+    """The plan as it stood in late September (before the mono hold)."""
+    with _fresh_db(monkeypatch, "004_sixteen_mile_compromise.sql") as c:
+        yield c
+
+
+@pytest.fixture
+def conn_now(monkeypatch):
+    """Every seed applied: the current plan."""
+    with _fresh_db(monkeypatch, None) as c:
         yield c
 
 
@@ -175,3 +191,20 @@ def test_today_view(conn):
     # Oct 3's go/no-go is visible all week, and pending until the runs happen.
     gate = t["long_run_gate"]
     assert gate["date"] == date(2026, 10, 3) and gate["verdict"] == "pending"
+
+
+@needs_db
+def test_mono_hold_rebase(conn_now):
+    from app import db, today as view, travel
+    from app.periodization.phases import validate_phases
+    validate_phases(db.load_phases(conn_now))
+    t = view.build(conn_now, date(2026, 10, 5))
+    assert t["health"]["status"] == "hold" and not t["sessions"]
+    assert t["phase"]["name"] == "Health hold (mono)"
+    names = [r["name"] for r in t["races"]]
+    assert "Marine Corps Marathon" not in names and "January marathon (race TBD)" in names
+    # September history still reads as it happened: the return phase, not mono.
+    assert view.build(conn_now, date(2026, 9, 25))["health"]["status"] == "return"
+    stops = travel.load(conn_now)
+    assert travel.place_for(stops, date(2026, 11, 12)).name == "Tokyo"
+    assert travel.place_for(stops, date(2026, 11, 24)).name == "Home"

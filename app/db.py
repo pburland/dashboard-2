@@ -59,10 +59,16 @@ def load_phases(conn: psycopg.Connection) -> list[Phase]:
                   r["id"], tuple(by_phase.get(r["id"], ()))) for r in rows]
 
 
-def open_episode(conn: psycopg.Connection) -> Episode | None:
-    r = conn.execute(
-        "select * from health_episodes where closed_on is null"
-    ).fetchone()
+def open_episode(conn: psycopg.Connection, as_of: date | None = None) -> Episode | None:
+    """The open episode; with ``as_of``, the one that covered that date (so
+    a past day reads as it happened, not as today's hold)."""
+    if as_of is None:
+        r = conn.execute("select * from health_episodes where closed_on is null").fetchone()
+    else:
+        r = conn.execute(
+            """select * from health_episodes where started_on <= %s
+               and (closed_on is null or closed_on >= %s) order by started_on desc limit 1""",
+            (as_of, as_of)).fetchone()
     if not r:
         return None
     return Episode(
@@ -77,7 +83,7 @@ def races(conn: psycopg.Connection) -> list[dict]:
     return conn.execute(
         "select id, name, race_date, distance, priority, goal_time::text, "
         "stretch_time::text, status, decision_date, decision_rule "
-        "from races order by race_date"
+        "from races where status <> 'dropped' order by race_date"
     ).fetchall()
 
 

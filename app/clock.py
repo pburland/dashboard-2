@@ -10,12 +10,28 @@ Lessons carried from the prototype:
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+from typing import Callable
 from zoneinfo import ZoneInfo
 
 from app.config import load_settings
 
 
+# Set at startup to app.travel.current_tz, so "today" follows a trip. Unset
+# (tests, scripts), the home timezone applies.
+_resolver: Callable[[], str] | None = None
+
+
+def set_resolver(fn: Callable[[], str] | None) -> None:
+    global _resolver
+    _resolver = fn
+
+
 def tz() -> ZoneInfo:
+    if _resolver is not None:
+        try:
+            return ZoneInfo(_resolver())
+        except Exception:
+            pass
     return ZoneInfo(load_settings().tz_name)
 
 
@@ -25,7 +41,7 @@ def now() -> datetime:
 
 
 def today() -> date:
-    """Current calendar date where the athlete lives."""
+    """Current calendar date where the athlete is (home, or a trip stop)."""
     return now().date()
 
 

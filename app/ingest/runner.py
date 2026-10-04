@@ -76,8 +76,12 @@ def run(kind: str = "manual", days: int = 3, morning: bool = False) -> dict:
                 flagged = evaluate.activity_flags(conn, start)
                 out = {"matched": matched, "activity_flags": flagged}
                 if morning:
+                    from app import travel
                     from app.integrations import weather
-                    out["heat_flags"] = evaluate.heat_checks(conn, today, weather.hourly_forecast(1), clock.tz())
+                    from zoneinfo import ZoneInfo
+                    here = travel.place_for(travel.load(conn), today)
+                    out["heat_flags"] = evaluate.heat_checks(conn, today, weather.hourly_forecast(1, here),
+                                                             ZoneInfo(here.tz_name))
                 return out
 
             for name, fn in (("oura", oura), ("baseline", baseline), ("garmin", garmin),

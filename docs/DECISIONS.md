@@ -86,3 +86,22 @@ in `sync_runs`; an advisory lock stops overlaps; a failed backfill retries at
 most every 6 hours. Each source is isolated, so one failing provider never
 blocks the others. Load is HR-based TRIMP using the Oura resting-HR baseline
 (median of the 28 days before Sep 13) and the observed max HR.
+
+## 2026-10-04: mono hold; MCM dropped; Asia trip; January marathon
+Patrick has mono. A new health hold starts Oct 3 (the Sep 13 episode is
+closed at the end of its return phase, Oct 2). The doctor expects him to be
+fine by about Oct 15, but the hold still exits only when clearance is
+recorded: the system never ends a hold by date. Mono can enlarge the
+spleen, so running and lifting both wait for the doctor, and the return
+phase takes the full 21 days with light, non-straining strength.
+The Marine Corps Marathon is dropped. Phases from Oct 3 are rebased toward
+Puerto Rico: hold, return (Oct 15 - Nov 4, provisional), Base 1 on the Asia
+trip (run only, Nov 6-23), Base 2, a short marathon build and taper for a
+January marathon (Jan 17-31, placeholder Jan 24, B race), a week of
+recovery, then 70.3 build, peak and race week. Honest cost: swim and bike
+restart in late November, so the bike-heavy work is squeezed into February,
+and a January marathon ~14 weeks after a mono return is a finish, not a
+time trial. The bench-225-by-Dec-31 goal is retired.
+A `travel` table holds the itinerary; weather, the heat check and the
+server's "today" follow it, so a Tokyo morning is dated and forecast in
+Tokyo. Past days now use the health episode that covered them.

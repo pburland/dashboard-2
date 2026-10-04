@@ -43,6 +43,8 @@ async def lifespan(_app: FastAPI):
             MIGRATIONS.update(status="error", error=f"{type(e).__name__}: {e}")
             log.exception("migrations failed")
     if MIGRATIONS.get("status") == "ok":
+        from app import travel
+        clock.set_resolver(travel.current_tz)
         from app.ingest import scheduler
         MIGRATIONS["scheduler"] = "on" if scheduler.start() else "off"
     yield
@@ -131,7 +133,7 @@ def state() -> dict:
     try:
         with db.connect() as conn:
             phases = db.load_phases(conn)
-            episode = db.open_episode(conn)
+            episode = db.open_episode(conn, today)
             races = db.races(conn)
     except MissingConfig as e:
         raise HTTPException(503, str(e))
