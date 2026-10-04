@@ -395,7 +395,7 @@ function chatMsg(role, html, extra = '') {
   return $('chatlog').lastElementChild;
 }
 function actsHtml(acts) {
-  return (acts || []).filter(a => a.tool === 'propose_change' && a.result && a.result.proposal_id)
+  return (acts || []).filter(a => ['propose_change', 'replan_week'].includes(a.tool) && a.result && a.result.proposal_id)
     .map(a => proposalCard(a.result)).join('') + actsLine(acts);
 }
 function actsLine(acts) {

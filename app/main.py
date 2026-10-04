@@ -63,7 +63,7 @@ def _replan_in_background() -> None:
         try:
             t = clock.today()
             with db.connect() as conn:
-                generator.generate(conn, t - timedelta(days=t.weekday()), weeks=3, today=t)
+                generator.generate(conn, t - timedelta(days=t.weekday()), weeks=3, today=t, trigger="manual")
                 conn.commit()
             log.warning("re-planned after seed change")
         except Exception:

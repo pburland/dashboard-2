@@ -46,6 +46,7 @@ class Op:
     before: dict | None           # existing row (dict with id) or None for add
     after: dict | None            # new row (no id) or None for remove
     note: str = ""
+    remove_status: str = "skipped"   # what a removed row becomes (superseded when re-planned away)
 
 
 @dataclass
@@ -230,7 +231,36 @@ def _jsonable(x):
 
 
 def _ops_json(ops: list[Op]) -> list[dict]:
-    return _jsonable([{"action": o.action, "before": o.before, "after": o.after, "note": o.note} for o in ops])
+    return _jsonable([{"action": o.action, "before": o.before, "after": o.after, "note": o.note,
+                       "remove_status": o.remove_status} for o in ops])
+
+
+def _ops_from_json(conn, items: list[dict]) -> list[Op]:
+    ops = []
+    for o in items:
+        before = None
+        if o.get("before"):
+            before = conn.execute("select * from planned_workouts where id = %s", (o["before"]["id"],)).fetchone()
+            before = dict(before) if before else None
+        after = dict(o["after"]) if o.get("after") else None
+        if after:
+            after["plan_date"] = _parse_date(after["plan_date"])
+        ops.append(Op(o["action"], before, after, o.get("note") or "", o.get("remove_status") or "skipped"))
+    return ops
+
+
+def store_proposal(conn, ops: list[Op], checked: Checked, *, source: str, reason: str,
+                   conversation_id: int | None = None) -> dict:
+    status = "refused" if checked.stops else "pending"
+    row = conn.execute(
+        """insert into plan_proposals (source, conversation_id, actions, base, flags, explanation, reason, status)
+           values (%s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s) returning id""",
+        (source, conversation_id, json.dumps(_ops_json(ops)),
+         json.dumps({str(o.before["id"]): fingerprint(o.before) for o in ops if o.before}),
+         json.dumps(_jsonable(checked.flags)), "; ".join(describe(ops)), reason, status)).fetchone()
+    return {"proposal_id": str(row["id"]), "status": status, "changes": describe(ops),
+            "flags": _jsonable(checked.flags), "pass": not checked.stops,
+            "needs_ack": [f["key"] for f in checked.warns], "reason": reason}
 
 
 def describe(ops: list[Op]) -> list[str]:
@@ -254,17 +284,9 @@ def propose(conn, actions: list[dict], *, source: str, reason: str, today: date,
     """Validate requested actions and store them for confirmation. Writes no plan rows."""
     ops = resolve(conn, actions, today)
     c = check(conn, ops, today)
-    status = "refused" if c.stops else "pending"
-    row = conn.execute(
-        """insert into plan_proposals (source, conversation_id, actions, base, flags, explanation, reason, status)
-           values (%s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s) returning id, created_at""",
-        (source, conversation_id, json.dumps(_ops_json(ops)),
-         json.dumps({str(o.before["id"]): fingerprint(o.before) for o in ops if o.before}),
-         json.dumps(_jsonable(c.flags)), "; ".join(describe(ops)), reason, status)).fetchone()
+    out = store_proposal(conn, ops, c, source=source, reason=reason, conversation_id=conversation_id)
     conn.commit()
-    return {"proposal_id": str(row["id"]), "status": status, "changes": describe(ops),
-            "flags": _jsonable(c.flags), "pass": not c.stops,
-            "needs_ack": [f["key"] for f in c.warns], "reason": reason}
+    return out
 
 
 def apply(conn, proposal_id: str, accepted_warns: list[str], today: date) -> dict:
@@ -274,21 +296,28 @@ def apply(conn, proposal_id: str, accepted_warns: list[str], today: date) -> dic
         raise ChangeError("no such proposal")
     if p["status"] != "pending":
         raise ChangeError(f"this proposal is {p['status']}")
-    actions = _actions_from(p["actions"])
     for wid, fp in (p["base"] or {}).items():
         cur = conn.execute("select * from planned_workouts where id = %s", (int(wid),)).fetchone()
         if not cur or fingerprint(dict(cur)) != fp or cur["status"] != "planned":
             conn.execute("update plan_proposals set status = 'stale', decided_at = now() where id = %s", (proposal_id,))
             conn.commit()
+            if p["source"] != "chat":
+                return {"applied": False, "stale": True,
+                        "message": "The plan changed since this was proposed; the morning check will re-plan."}
             try:
-                fresh = propose(conn, actions, source=p["source"], reason=p["reason"], today=today,
-                                conversation_id=p["conversation_id"])
+                fresh = propose(conn, _actions_from(p["actions"]), source=p["source"], reason=p["reason"],
+                                today=today, conversation_id=p["conversation_id"])
             except ChangeError as e:
                 fresh = {"error": str(e)}
             return {"applied": False, "stale": True,
                     "message": "The plan changed since this was proposed. Here is the updated proposal.",
                     "new_proposal": fresh}
-    ops = resolve(conn, actions, today)
+    ops = _ops_from_json(conn, p["actions"])
+    for op in ops:
+        if op.after and op.after["plan_date"] < today:
+            conn.execute("update plan_proposals set status = 'stale', decided_at = now() where id = %s", (proposal_id,))
+            conn.commit()
+            return {"applied": False, "stale": True, "message": f"{op.after['plan_date']:%a %b %-d} has passed."}
     c = check(conn, ops, today)
     if c.stops:
         conn.execute("update plan_proposals set status = 'refused', flags = %s::jsonb, decided_at = now() "
@@ -352,7 +381,7 @@ def write(conn, ops: list[Op], checked: Checked, *, source: str, reason: str,
         before = op.before
         if before:
             conn.execute("update planned_workouts set status = %s where id = %s",
-                         ("skipped" if op.action == "remove" else "superseded", before["id"]))
+                         (op.remove_status if op.action == "remove" else "superseded", before["id"]))
         after_row = None
         if op.after:
             r = dict(op.after)
@@ -364,8 +393,10 @@ def write(conn, ops: list[Op], checked: Checked, *, source: str, reason: str,
             st["changed_by"] = {"by": {"chat": "you", "system": "auto-rebase", "generator": "planner",
                                        "coach": "coach"}[source], "on": stamp, "reason": reason,
                                 "batch": str(batch)}
-            if before and before.get("structure", {}).get("gen_key"):
+            if before and (before.get("structure") or {}).get("gen_key") and "gen_key" not in st:
                 st["gen_key"] = before["structure"]["gen_key"]
+            if source == "generator" and op.action != "move":
+                st.pop("changed_by", None)          # routine planning isn't a "change" worth marking
             r["structure"] = st
             r["source"] = source if source in ("chat", "system") else r.get("source") or "generator"
             if r.get("duration_min") and r.get("max_zone") in ("Z1", "Z2", "Z3", "Z4"):

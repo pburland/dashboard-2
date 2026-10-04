@@ -80,6 +80,11 @@ TOOLS = [
      "input_schema": {"type": "object", "properties": {
          "proposal_id": {"type": "string"},
          "accepted_warns": {"type": "array", "items": {"type": "string"}}}, "required": ["proposal_id"]}},
+    {"name": "replan_week",
+     "description": "Re-plan one week with the planner (same rules as the Sunday plan) and hold the result "
+                    "as a proposal for Patrick to confirm. Use when he asks to rebuild or rebalance a week.",
+     "input_schema": {"type": "object", "properties": {
+         "week_start": {"type": "string", "description": "Monday, YYYY-MM-DD"}}, "required": ["week_start"]}},
     {"name": "log_note",
      "description": "Save a note the training system will remember and use (weekly report, plan).",
      "input_schema": {"type": "object", "properties": {
@@ -242,6 +247,8 @@ def run_tool(conn, name: str, args: dict, today: date, turn_started=None,
         if name == "propose_change":
             return changes.propose(conn, args["actions"], source="chat", reason=args["reason"], today=today,
                                    conversation_id=conversation_id)
+        if name == "replan_week":
+            return replan(conn, date.fromisoformat(args["week_start"]), today, conversation_id)
         if name == "apply_change":
             p = conn.execute("select created_at, status from plan_proposals where id = %s",
                              (args["proposal_id"],)).fetchone()
@@ -287,6 +294,20 @@ def run_tool(conn, name: str, args: dict, today: date, turn_started=None,
                      (args["kind"], today, args["reason"], "Opened from Pat-GPT chat."))
         return {"opened": True, "note": "All workouts are suppressed until clearance is recorded."}
     return {"error": f"unknown tool {name}"}
+
+
+def replan(conn, ws: date, today: date, conversation_id: int | None) -> dict:
+    from app.planning import generator, sync
+    ws = ws - timedelta(days=ws.weekday())
+    hist = generator.history(conn, ws)
+    actual, planned = generator._week_run_mi(conn, ws - timedelta(days=7))
+    cal = generator.Calendar(conn, ws, ws + timedelta(days=6))
+    fixed, missed = sync.week_context(conn, ws, today)
+    wp = generator.plan_week(conn, ws, basis_mi=actual or planned, hist=hist, today=today, cal=cal,
+                             fixed=fixed, missed_keys=missed)
+    r = sync.sync(conn, wp, today, preview=ws > today, trigger="chat", policy="propose",
+                  conversation_id=conversation_id)
+    return r.get("proposal") or {"status": "no_change", "message": "The planner would keep this week as it is."}
 
 
 def plan_window(conn, start: date, end: date, today: date) -> dict:
