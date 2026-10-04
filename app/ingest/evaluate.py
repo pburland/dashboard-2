@@ -46,7 +46,7 @@ def match_planned(conn, since: date, until: date) -> int:
     same sport (longest first). Returns the number newly matched."""
     planned = conn.execute(
         """select id, plan_date, sport from planned_workouts
-           where plan_date between %s and %s and activity_id is null
+           where plan_date between %s and %s and activity_id is null and status = 'planned'
              and sport in ('run','bike','swim') order by plan_date, id""", (since, until)).fetchall()
     n = 0
     for p in planned:
@@ -101,12 +101,15 @@ def profile(conn) -> dict:
 
 
 def morning_signals(conn, today: date) -> MorningSignals:
+    """Oura's morning numbers plus any recent bad/pain check-in."""
+    from app import checkins
+    why = checkins.reason_for(conn, today)
     r = conn.execute("select * from recovery where day <= %s order by day desc limit 1", (today,)).fetchone()
     if not r or r["day"] < today - timedelta(days=1):
-        return MorningSignals(resting_hr_baseline=profile(conn).get("resting_hr_baseline"))
+        return MorningSignals(resting_hr_baseline=profile(conn).get("resting_hr_baseline"), checkin_reason=why)
     return MorningSignals(readiness=r["readiness"], resting_hr=r["resting_hr"],
                           resting_hr_baseline=profile(conn).get("resting_hr_baseline"),
-                          temp_deviation_c=r["temp_deviation_c"])
+                          temp_deviation_c=r["temp_deviation_c"], checkin_reason=why)
 
 
 def heat_checks(conn, today: date, hours: list[heat.HourlyWeather], tz) -> int:

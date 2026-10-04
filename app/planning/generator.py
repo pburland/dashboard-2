@@ -173,10 +173,13 @@ def plan_week(conn, ws: date, *, basis_mi: float, factor: float = 1.0, hist: His
     today = today or ws
     episode = db.open_episode(conn, today)
     hist = hist or history(conn, ws)
+    from app import checkins
+    recent_checkins = checkins.recent(conn, ws - timedelta(days=checkins.CAUTION_DAYS))
 
     def gate_for(d: date):
         ep = provisional(episode, d) if d > today else episode
-        return gate(ep, MorningSignals(), d)
+        why = checkins.caution_reason(recent_checkins, d) if d >= today else None
+        return gate(ep, MorningSignals(checkin_reason=why), d)
 
     is_prov = any(gate_for(ws + timedelta(days=i)).status is not Status.HOLD
                   and episode is not None and episode.return_started_on is None

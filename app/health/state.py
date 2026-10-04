@@ -67,6 +67,7 @@ class MorningSignals:
     resting_hr: int | None = None
     resting_hr_baseline: int | None = None
     temp_deviation_c: float | None = None     # Oura body-temperature deviation
+    checkin_reason: str | None = None         # a recent bad/pain check-in (app/checkins.py)
 
 
 @dataclass(frozen=True)
@@ -94,6 +95,8 @@ def caution_reasons(s: MorningSignals) -> list[str]:
         reasons.append(f"resting HR {s.resting_hr} vs baseline {s.resting_hr_baseline} (+5 or more)")
     if s.temp_deviation_c is not None and s.temp_deviation_c >= 0.5:
         reasons.append(f"body temperature +{s.temp_deviation_c:.1f}°C vs baseline — possible illness, log it if you feel unwell")
+    if s.checkin_reason:
+        reasons.append(s.checkin_reason)
     return reasons
 
 
@@ -155,6 +158,7 @@ def gate(episode: Episode | None, signals: MorningSignals, as_of: date) -> Gate:
     if st is Status.RETURN:
         vol = return_volume(episode, as_of)
         return Gate(st, True, "Z2", vol, False, (
+            *caution_reasons(signals),          # already inside the return limits, but say why
             f"return to training until {episode.return_ends_on:%b %-d}: {int(vol * 100)}% volume, Z2 only",
             f"long run capped at {int(RETURN_LONG_RUN_CAP * 100)}% of pre-hold longest",
         ))

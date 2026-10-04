@@ -191,6 +191,27 @@ def api_today() -> dict:
         raise HTTPException(503, str(e))
 
 
+@app.post("/api/checkin", dependencies=[Depends(require_admin)])
+def api_checkin(planned_workout_id: int | None = Body(default=None, embed=True),
+                activity_id: int | None = Body(default=None, embed=True),
+                rpe: int | None = Body(default=None, embed=True, ge=1, le=10),
+                felt: str | None = Body(default=None, embed=True, pattern="^(good|fine|bad)$"),
+                pain: bool = Body(default=False, embed=True),
+                pain_detail: str | None = Body(default=None, embed=True, max_length=200),
+                note: str | None = Body(default=None, embed=True, max_length=1000)) -> dict:
+    """Save a post-workout check-in; returns its effect on the next 48 hours."""
+    from app import checkins, db
+    try:
+        with db.connect() as conn:
+            r = checkins.submit(conn, planned_workout_id=planned_workout_id, activity_id=activity_id, rpe=rpe,
+                                felt=felt, pain=pain, pain_detail=pain_detail, note=note)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+    return {"ok": True, "effects": r["effects"], "check_in_on": r["check_in"]["check_in_on"]}
+
+
 @app.get("/api/plan", dependencies=[Depends(require_admin)])
 def api_plan(days: int = Query(default=28, ge=1, le=60)) -> dict:
     from app import db, today as view

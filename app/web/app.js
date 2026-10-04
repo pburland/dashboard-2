@@ -198,6 +198,48 @@ function recentCard(acts) {
   }).join('')}</section>`;
 }
 
+// ── post-workout check-in ───────────────────────────────────────────────
+function checkinCard(p) {
+  if (!p) return '';
+  const nums = Array.from({length: 10}, (_, i) => `<button type="button" data-rpe="${i + 1}">${i + 1}</button>`).join('');
+  return `<section class="card checkin" id="checkin" data-pid="${p.planned_workout_id ?? ''}" data-aid="${p.activity_id ?? ''}">
+    <div class="label">${esc(p.title)} · ${fmt(p.date, {weekday: 'short', month: 'short', day: 'numeric'})}</div>
+    <div class="wk-title">How was it?</div>
+    <div class="ci-row ci-rpe">${nums}</div>
+    <div class="ci-q">Felt:</div><div class="ci-row ci-felt"><button type="button" data-felt="good">Good</button><button type="button" data-felt="fine">Fine</button><button type="button" data-felt="bad">Bad</button></div>
+    <div class="ci-q">Any pain?</div><div class="ci-row ci-pain"><button type="button" data-pain="0">No</button><button type="button" data-pain="1">Yes</button></div>
+    <input id="ci-where" type="text" placeholder="Where?" maxlength="200" hidden>
+    <button class="primary-btn" id="ci-done" disabled>Done.</button>
+    <div class="n4m" id="ci-msg"></div></section>`;
+}
+
+function wireCheckin() {
+  const card = $('checkin');
+  if (!card) return;
+  const st = {rpe: null, felt: null, pain: null};
+  const pick = (sel, key, val, btn) => { card.querySelectorAll(sel + ' button').forEach(b => b.classList.toggle('on', b === btn)); st[key] = val; ready(); };
+  const ready = () => { $('ci-done').disabled = !(st.rpe && st.felt && st.pain !== null); };
+  card.querySelectorAll('.ci-rpe button').forEach(b => b.onclick = () => pick('.ci-rpe', 'rpe', Number(b.dataset.rpe), b));
+  card.querySelectorAll('.ci-felt button').forEach(b => b.onclick = () => pick('.ci-felt', 'felt', b.dataset.felt, b));
+  card.querySelectorAll('.ci-pain button').forEach(b => b.onclick = () => {
+    pick('.ci-pain', 'pain', b.dataset.pain === '1', b);
+    $('ci-where').hidden = !st.pain; if (st.pain) $('ci-where').focus();
+  });
+  $('ci-done').onclick = async () => {
+    $('ci-done').disabled = true;
+    try {
+      const r = await post('/api/checkin', {planned_workout_id: card.dataset.pid ? Number(card.dataset.pid) : null,
+        activity_id: card.dataset.aid ? Number(card.dataset.aid) : null, rpe: st.rpe, felt: st.felt, pain: st.pain,
+        pain_detail: st.pain ? $('ci-where').value.trim() || null : null}, 15000);
+      card.innerHTML = `<div class="label">Checked in</div><div>${esc(r.effects.length ? r.effects.join(' ') : 'Saved.')}</div>`;
+      if (r.effects.length) setTimeout(start, 600);       // the gate changed: refresh Today
+    } catch (e) {
+      if (e.auth) return showSignin('Signed out on this device. Paste your token again.');
+      $('ci-msg').textContent = e.message; $('ci-done').disabled = false;
+    }
+  };
+}
+
 function fuelCard(f, b) {
   if (!f) return '';
   const n = x => Number(x).toLocaleString('en-US');
@@ -226,7 +268,7 @@ function renderToday(t, cached) {
       <div class="name">${esc(r.name.replace('IRONMAN ', 'IM '))}</div>
       <div class="meta">${r.goal_time ? 'Goal ' + esc(hm(r.goal_time)) : r.priority === 2 ? 'Target after PR' : 'No time goal'}${r.stretch_time ? ' · stretch ' + esc(hm(r.stretch_time)) : ''}</div></div>`).join('');
   const sessions = t.sessions.filter(s => !s.suppressed);
-  let todayHtml = statusLine(t.health, t.phase);
+  let todayHtml = statusLine(t.health, t.phase) + checkinCard(t.pending_checkin);
   if (!t.health.prescriptions_allowed) {
     todayHtml += `<section class="card hold"><div class="state"><span class="dot"></span>Health hold</div><h2>No workout today.</h2>
       <ul class="crit">${t.health.reasons.slice(1).map(r => `<li><span class="box"></span><div class="t">${esc(r.replace('to exit: ', ''))}</div></li>`).join('')}</ul></section>`;
@@ -242,6 +284,7 @@ function renderToday(t, cached) {
   todayHtml += fuelCard(t.fuel, t.body);
   todayHtml += gateCard(t.long_run_gate) + readinessCard(t.readiness) + recentCard(t.recent_activities);
   $('today').innerHTML = todayHtml;
+  wireCheckin();
   const last = t.last_sync ? new Date(t.last_sync.finished_at).toLocaleString('en-US', {weekday: 'short', hour: 'numeric', minute: '2-digit'}) : 'never';
   $('sync').textContent = (cached ? `Offline · showing data from ${new Date(cached).toLocaleString()}. ` : '') + `Last sync ${last}`;
 }
@@ -360,9 +403,21 @@ async function renderTrends() {
       if (i % 2 === 0) g += `<text x="${cx}" y="${H - 6}" fill="#86868b" font-size="10" text-anchor="middle">${fmt(w.week, {month: 'short', day: 'numeric'})}</text>`;
     });
     const b = data.bench, last = b.at(-1);
+    const rp = data.rpe7 || [];
+    let rpeSvg = '<p class="muted">No check-ins yet. Tap "How was it?" after a workout.</p>';
+    if (rp.length) {
+      const RW = 380, RH = 120, x0 = Date.parse(rp[0].day), x1 = Math.max(x0 + 864e5, Date.parse(rp.at(-1).day));
+      const px = d => 24 + (RW - 30) * (Date.parse(d) - x0) / (x1 - x0), py = v => 8 + (RH - 28) * (1 - (v - 1) / 9);
+      const pts = rp.map(r => `${px(r.day).toFixed(1)},${py(r.rpe7).toFixed(1)}`).join(' ');
+      rpeSvg = `<div class="chart"><svg viewBox="0 0 ${RW} ${RH}" role="img" aria-label="7-day average RPE">
+        ${[2, 5, 8].map(v => `<line x1="24" x2="${RW}" y1="${py(v)}" y2="${py(v)}" stroke="#2c2c2e"/><text x="18" y="${py(v) + 4}" fill="#86868b" font-size="11" text-anchor="end">${v}</text>`).join('')}
+        <polyline points="${pts}" fill="none" stroke="#ff9f0a" stroke-width="2"/></svg></div>
+        <div class="n4m">Latest: ${rp.at(-1).rpe7} (7-day average). Easy weeks should sit around 3-5.</div>`;
+    }
     $('trends').innerHTML = `<section class="card"><div class="label">Weekly run miles</div>
       <div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Weekly run miles">${g}</svg></div>
       <div class="legend" style="margin-top:8px"><span><i style="background:var(--blue)"></i>Actual</span><span><i style="background:var(--teal);height:2px;vertical-align:3px"></i>Planned</span></div></section>
+      <section class="card"><div class="label">How hard it felt · 7-day average RPE</div>${rpeSvg}</section>
       <section class="card"><div class="label">Bench press · estimated 1RM</div>${last ? `
       <div class="row"><div class="stat"><div class="v">${Math.round(last.e1rm)}<small> lb</small></div><div class="n">${fmt(last.day, {month: 'short', day: 'numeric'})} · top set ${last.top} lb</div></div>
       <div style="text-align:right"><span class="pill ${last.e1rm >= 225 ? 'ok' : 'stop'}">${last.e1rm >= 225 ? '✓ 225 reached' : '✕ Off track for 225'}</span></div></div>

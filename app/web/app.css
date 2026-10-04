@@ -228,3 +228,10 @@ details.pb .brief{margin:4px 0 2px}
 .report b{color:var(--ink)}
 .report .meta{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 10px}
 @media (max-width:420px){.tabs button{font-size:12px}}
+.checkin .ci-row{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.checkin .ci-row button{flex:1;min-width:28px;background:var(--card2);color:var(--ink);border:0;border-radius:10px;padding:10px 0;font:600 14px inherit;font-family:inherit;cursor:pointer}
+.checkin .ci-row button.on{background:var(--blue);color:#fff}
+.checkin .ci-q{font-size:13px;color:var(--ink2);margin-top:6px}
+.checkin input{width:100%;background:var(--card2);border:0;border-radius:10px;padding:10px;color:var(--ink);font:inherit;margin:6px 0}
+.checkin .primary-btn{margin-top:8px}
+.checkin .primary-btn:disabled{opacity:.4}

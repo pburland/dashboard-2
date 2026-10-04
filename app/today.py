@@ -71,7 +71,7 @@ def build(conn, today: date, next_days: int = 4) -> dict:
     days = [{"date": today, "sessions": today_sessions}] + \
            [{"date": d, "sessions": s} for d, s in sorted(upcoming.items())]
     timing_note = timing.annotate(conn, days, today) if g.prescriptions_allowed else None
-    from app import nutrition
+    from app import checkins, nutrition
     prof = conn.execute("select rmr_kcal from profile where id = 1").fetchone() or {}
     body = conn.execute("select day, weight_lb, bf_pct, lean_lb, fat_lb, source from body_metrics "
                         "where weight_lb is not null and day <= %s order by day desc limit 1", (today,)).fetchone()
@@ -99,6 +99,7 @@ def build(conn, today: date, next_days: int = 4) -> dict:
             "flags": act_flags.get(a["id"], [])} for a in recent],
         "races": [r | {"days_until": (r["race_date"] - today).days} for r in races],
         "timing_note": timing_note,
+        "pending_checkin": checkins.pending(conn, today),
         "fuel": fuel,
         "body": body,
         "last_sync": last,
@@ -144,7 +145,9 @@ def trends(conn, today: date, weeks: int = 10) -> dict:
            from strength_sets where exercise ilike 'bench press%%' and not excluded
              and coalesce(set_type, 'normal') not in ('warmup') and reps between 1 and 12
            group by 1 order by 1""").fetchall()
+    from app import checkins
     return {
+        "rpe7": checkins.rpe_trend(conn, start, today),
         "weekly_run_mi": [{"week": w, "actual": round(actual.get(w) or 0, 1),
                            "planned": round(planned[w], 1) if w in planned else None} for w in wk],
         "bench": [{"day": b["day"], "e1rm": round(b["e1rm"], 1), "top": b["top"]} for b in bench],
