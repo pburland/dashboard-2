@@ -195,3 +195,35 @@ def test_oura_readiness_catch_up_runs_until_scored(conn):
     conn.execute("delete from sync_runs")
     assert not readiness_due(conn, at(d, 8))                         # scored: done
     assert not readiness_due(conn, at(d, 13))
+
+
+@needs_db
+def test_refresh_button_syncs_once_and_reports_failures(conn, monkeypatch):
+    import json as _json
+    from fastapi.testclient import TestClient
+    from app import db, main
+    from app.ingest import runner
+    from tests.test_ingest import DB
+    monkeypatch.setenv("SUPABASE_DB_URL", DB)
+    monkeypatch.setenv("ADMIN_TOKEN", "t")
+    monkeypatch.setattr(db, "_pool", None)
+
+    def fake_run(kind, days, **kw):
+        with db.connect() as c:
+            c.execute("""insert into sync_runs (kind, finished_at, ok, summary) values (%s, now(), false, %s::jsonb)""",
+                      (kind, _json.dumps({"oura": {"ok": True}, "garmin": {"ok": False, "error": "x"}})))
+            c.commit()
+    monkeypatch.setattr(runner, "run", fake_run)
+    import time as _t
+    client = TestClient(main.app)
+    h = {"X-Admin-Token": "t"}
+    r = client.post("/api/refresh", headers=h).json()
+    assert r["started"]
+    for _ in range(50):                                  # the sync runs in a background thread
+        st = client.get("/api/refresh/status", headers=h, params={"after": r["after"]}).json()
+        if st["done"]:
+            break
+        _t.sleep(0.1)
+    assert st == {"done": True, "ok": False, "failed": ["garmin"]}
+    assert client.post("/api/refresh", headers=h).json()["started"] is False      # within 2 minutes: reuse
+    db._pool.close()

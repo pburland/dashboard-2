@@ -246,3 +246,7 @@ details.pb .brief{margin:4px 0 2px}
 .ci-skip{margin-top:8px;text-align:center}
 .ci-skip .ci-row button{font-size:13px}
 #clearopen{margin-top:10px}
+.hdr-right{display:flex;align-items:center;gap:10px}
+.refresh{flex:none;width:30px;height:30px;border-radius:50%;border:0;background:var(--card2);color:var(--ink);font:600 16px/30px inherit;cursor:pointer;padding:0}
+.refresh.spin{animation:spin 1s linear infinite;color:var(--blue)}
+@keyframes spin{to{transform:rotate(360deg)}}

@@ -417,6 +417,39 @@ def api_conversation(conversation_id: int) -> list:
         return chat.messages(conn, conversation_id)
 
 
+REFRESH_MIN_GAP_S = 120
+
+
+@app.post("/api/refresh", dependencies=[Depends(require_admin)])
+def api_refresh() -> dict:
+    """The app's refresh button: pull the last 2 days from Garmin, Oura and
+    Hevy now. A refresh within 2 minutes of the last one reuses it."""
+    import threading
+    from app import db
+    from app.ingest import runner
+    with db.connect() as conn:
+        recent = conn.execute("""select started_at from sync_runs where kind in ('refresh','manual','morning','nightly')
+                                 and started_at > now() - make_interval(secs => %s)
+                                 order by started_at desc limit 1""", (REFRESH_MIN_GAP_S,)).fetchone()
+        after = conn.execute("select now() as t").fetchone()["t"]
+    if recent:
+        return {"started": False, "after": recent["started_at"].isoformat()}
+    threading.Thread(target=runner.run, kwargs={"kind": "refresh", "days": 2}, daemon=True).start()
+    return {"started": True, "after": after.isoformat()}
+
+
+@app.get("/api/refresh/status", dependencies=[Depends(require_admin)])
+def api_refresh_status(after: str = Query(...)) -> dict:
+    from app import db
+    with db.connect() as conn:
+        r = conn.execute("""select finished_at, ok, summary from sync_runs where started_at >= %s::timestamptz
+                            order by started_at limit 1""", (after,)).fetchone()
+    if not r:
+        return {"done": False}
+    failed = [k for k, v in (r["summary"] or {}).items() if isinstance(v, dict) and v.get("ok") is False]
+    return {"done": r["finished_at"] is not None, "ok": r["ok"], "failed": failed}
+
+
 @app.post("/admin/sync", dependencies=[Depends(require_admin)])
 def admin_sync(days: int = Query(default=3, ge=1, le=730), morning: bool = False) -> dict:
     """Start a sync in the background; poll /admin/sync/status for the result."""

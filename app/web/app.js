@@ -592,6 +592,32 @@ function wireClearance() {
   };
 }
 
+// ── refresh: pull new data from Garmin, Oura and Hevy, then redraw ─────
+async function refreshAll() {
+  const btn = $('refresh');
+  if (btn.classList.contains('spin')) return;
+  btn.classList.add('spin');
+  const note = t => { $('sync').textContent = t; };
+  try {
+    const r = await post('/api/refresh', {}, 15000);
+    note('Syncing Garmin, Oura and Hevy…');
+    let st = {done: false};
+    for (let i = 0; i < 40 && !st.done; i++) {          // up to ~2 minutes
+      await new Promise(res => setTimeout(res, 3000));
+      st = (await api('/api/refresh/status?after=' + encodeURIComponent(r.after))).data;
+    }
+    await start();
+    const tab = document.querySelector('.tabs button[aria-selected=true]')?.dataset.tab;
+    if (tab === 'plan') renderPlan(); else if (tab === 'trends') renderTrends(); else if (tab === 'reports') renderReports();
+    if (!st.done) note('Still syncing in the background; refresh again in a minute.');
+    else if (st.failed?.length) note(`Updated, but couldn't reach: ${st.failed.join(', ')}.`);
+  } catch (e) {
+    if (e.auth) return showSignin('Signed out on this device. Paste your token again.');
+    note(e.message);
+  } finally { btn.classList.remove('spin'); }
+}
+$('refresh').onclick = refreshAll;
+
 // ── start ───────────────────────────────────────────────────────────────
 let starting = false;
 async function start() {
