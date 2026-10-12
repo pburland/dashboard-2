@@ -35,7 +35,9 @@ def _step(summary: dict, name: str, fn, conn) -> None:
             conn.rollback()
 
 
-def run(kind: str = "manual", days: int = 3, morning: bool = False) -> dict:
+def run(kind: str = "manual", days: int = 3, morning: bool = False, only: tuple[str, ...] | None = None) -> dict:
+    """One sync. ``only`` limits it to some steps (e.g. ("oura",) for the
+    morning readiness catch-up)."""
     today = clock.today()
     start = today - timedelta(days=days)
     summary: dict = {"kind": kind, "from": start.isoformat(), "to": today.isoformat()}
@@ -93,7 +95,8 @@ def run(kind: str = "manual", days: int = 3, morning: bool = False) -> dict:
             if morning:
                 steps.append(("rebase", rebase_week))
             for name, fn in steps:
-                _step(summary, name, fn, conn)
+                if only is None or name in only:
+                    _step(summary, name, fn, conn)
             for name in ("garmin", "hevy", "oura"):
                 if summary.get(name, {}).get("ok"):
                     db.save_integration(conn, name, synced=True, last_error=None)

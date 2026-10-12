@@ -161,8 +161,9 @@ function next4(days) {
       const [kname, color] = KIND[kindOf(s)];
       const meta = [s.distance_mi != null ? `${s.distance_mi} mi` : '', s.duration_min ? `${Math.round(s.duration_min)} min` : ''].filter(Boolean).join(' · ');
       const bt = s.best_time?.label ? ` · <span class="bt">${esc(s.best_time.label)}</span>` : '';
+      const prov = s.structure?.provisional ? '<span class="pill prev">if cleared</span>' : '';
       return `<div class="n4row"><span class="kbar" style="background:${color}"></span>
-        <div><div class="n4t">${esc(s.title)}</div><div class="n4m">${kname}${meta ? ' · ' + meta : ''}${bt}</div></div></div>`;
+        <div><div class="n4t">${esc(s.title)}${prov}</div><div class="n4m">${kname}${meta ? ' · ' + meta : ''}${bt}</div></div></div>`;
     }).join('') || '<div class="n4row"><span class="kbar" style="background:var(--muted)"></span><div><div class="n4t">Rest</div></div></div>'}</div></div>`).join('');
 }
 
@@ -184,7 +185,8 @@ function readinessCard(r) {
   return `<section class="card"><div class="label">This morning · Oura ${fmt(r.day, {month: 'short', day: 'numeric'})}</div>
     <div class="readiness"><div><b>${esc(r.readiness ?? '—')}</b><span>readiness</span></div>
     <div><b>${esc(r.resting_hr ?? '—')}</b><span>resting HR${rhr}</span></div>
-    <div><b>${t}</b><span>temperature</span></div></div></section>`;
+    <div><b>${t}</b><span>temperature</span></div></div>
+    ${r.readiness == null ? '<div class="n4m" style="margin-top:8px">Oura hasn\'t scored readiness yet. Open the Oura app to sync your ring; this fills in within 30 minutes.</div>' : ''}</section>`;
 }
 
 function recentCard(acts) {

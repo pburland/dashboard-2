@@ -40,13 +40,24 @@ def build(conn, today: date, next_days: int = 4, checkin_id: int | None = None) 
         if f["subject_type"] == "planned_workout":
             by_plan.setdefault(f["subject_id"], []).append(f)
 
-    today_sessions, upcoming = [], {}
+    # Every one of the next days is listed. A day the health gate closes shows a
+    # single "health hold" entry; a day after the expected clearance shows its
+    # sessions marked provisional ("if cleared").
+    from app.planning import generator
+    day_gate = generator.day_gate(conn, today, today)
+    today_sessions = []
+    upcoming: dict[date, list] = {today + timedelta(days=i): [] for i in range(1, next_days + 1)}
     for r in plans:
         s = _session(r) | {"flags": [{"kind": f["kind"], "severity": f["severity"], "message": f["message"]}
                                      for f in by_plan.get(r["id"], [])]}
-        if not g.prescriptions_allowed:
-            s = {"id": r["id"], "date": r["plan_date"], "suppressed": True}
-        (today_sessions if r["plan_date"] == today else upcoming.setdefault(r["plan_date"], [])).append(s)
+        if r["plan_date"] == today:
+            today_sessions.append({"id": r["id"], "date": r["plan_date"], "suppressed": True}
+                                  if not g.prescriptions_allowed else s)
+        elif r["status"] in ("planned", "done") and r["plan_date"] in upcoming:
+            upcoming[r["plan_date"]].append(s)
+    for d in upcoming:
+        if not day_gate(d).prescriptions_allowed:
+            upcoming[d] = [{"date": d, "suppressed": True}]
 
     recent = conn.execute(
         """select a.id, a.local_date, a.sport, a.title, a.distance_m, a.duration_s, a.avg_hr,

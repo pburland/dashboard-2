@@ -58,6 +58,22 @@ def _backfill_needed(conn) -> bool:
 
 
 WEEKLY_AT = time(19, 0)
+# Oura scores readiness only after the ring syncs with the phone in the
+# morning, often after the 05:30 run: re-fetch Oura until it's there.
+READINESS_FROM, READINESS_UNTIL = time(6, 0), time(12, 0)
+READINESS_EVERY_MIN = 30
+
+
+def readiness_due(conn, now: datetime) -> bool:
+    if not (READINESS_FROM <= now.time() < READINESS_UNTIL):
+        return False
+    have = conn.execute("select readiness from recovery where day = %s", (now.date(),)).fetchone()
+    if have and have["readiness"] is not None:
+        return False
+    recent = conn.execute(
+        "select 1 from sync_runs where kind = 'oura' and started_at > now() - make_interval(mins => %s)",
+        (READINESS_EVERY_MIN,)).fetchone()
+    return not recent
 
 
 def report_week_due(now: datetime, have: set) -> date | None:
@@ -81,7 +97,7 @@ def _weekly(ws) -> None:
 
 def tick() -> list[str]:
     now = clock.now()
-    weekly = None
+    weekly, oura_catchup = None, False
     with db.connect() as conn:
         if _backfill_needed(conn):
             todo = [("backfill", BACKFILL_DAYS, False)]
@@ -91,11 +107,15 @@ def tick() -> list[str]:
             have = {r["week_start"] for r in conn.execute(
                 "select week_start from weekly_summaries where week_start >= %s",
                 (now.date() - timedelta(days=21),)).fetchall()}
+            oura_catchup = readiness_due(conn, now)
             tried = conn.execute("select 1 from sync_runs where kind = 'weekly' and started_at > now() - interval '6 hours'").fetchone()
             weekly = None if tried else report_week_due(now, have)
     for kind, days, morning in todo:
         log.warning("running %s sync", kind)
         runner.run(kind, days=days, morning=morning)
+    if not todo and oura_catchup:
+        runner.run("oura", days=1, only=("oura",))
+        todo.append(("oura", 1, False))
     if weekly:
         log.warning("weekly report for %s", weekly)
         _weekly(weekly)

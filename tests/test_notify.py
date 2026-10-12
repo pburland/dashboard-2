@@ -165,3 +165,33 @@ def test_clearance_button_needs_all_three_and_starts_the_return(conn, monkeypatc
     assert client.post("/api/health/clear", headers=h, json={"physician_clearance": True, "fever_free_48h": True,
                                                             "rhr_near_baseline_3d": True}).status_code == 409
     db._pool.close()
+
+
+@needs_db
+def test_today_lists_every_next_day_with_one_hold_row_and_provisional_sessions(conn):
+    from app import today as view
+    from app.planning import generator as g
+    _history(conn)
+    g.generate(conn, date(2026, 10, 12), weeks=1, today=date(2026, 10, 11), use_calendar=False)
+    t = view.build(conn, date(2026, 10, 12))
+    days = {d["date"]: d["sessions"] for d in t["next_days"]}
+    assert list(days) == [date(2026, 10, 13), date(2026, 10, 14), date(2026, 10, 15), date(2026, 10, 16)]
+    assert days[date(2026, 10, 13)] == [{"date": date(2026, 10, 13), "suppressed": True}]     # one row, not one per session
+    thu = days[date(2026, 10, 15)]
+    assert thu and all(not s.get("suppressed") and s["structure"].get("provisional") for s in thu)
+
+
+@needs_db
+def test_oura_readiness_catch_up_runs_until_scored(conn):
+    from app.ingest.scheduler import readiness_due
+    d = date(2026, 10, 12)
+    assert not readiness_due(conn, at(d, 5, 40))                    # the 05:30 sync owns this
+    assert readiness_due(conn, at(d, 7))                             # no row yet
+    conn.execute("insert into recovery (day, resting_hr) values (%s, 52)", (d,))
+    assert readiness_due(conn, at(d, 7))                             # sleep in, readiness not scored
+    conn.execute("insert into sync_runs (kind, started_at) values ('oura', now())")
+    assert not readiness_due(conn, at(d, 7, 10))                     # tried in the last 30 min
+    conn.execute("update recovery set readiness = 81 where day = %s", (d,))
+    conn.execute("delete from sync_runs")
+    assert not readiness_due(conn, at(d, 8))                         # scored: done
+    assert not readiness_due(conn, at(d, 13))
