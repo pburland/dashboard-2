@@ -89,8 +89,10 @@ def build(conn, today: date, next_days: int = 4, checkin_id: int | None = None) 
     deficit_goal = bool(conn.execute("select 1 from goals where kind = 'body_comp' and status = 'active'").fetchone())
     fuel = nutrition.targets(prof.get("rmr_kcal"), body and body["weight_lb"], today_sessions,
                              health=g.status.value, phase_kind=phase.get("kind"), deficit_goal=deficit_goal)
+    who = conn.execute("select name, assistant_name from profile where id = 1").fetchone() or {}
     return {
         "today": today,
+        "athlete": {"name": who.get("name"), "assistant": who.get("assistant_name")},
         "phase": phase,
         "where": {"place": here.name, "away": here.away, "sports": list(here.sports or []), "note": here.note},
         "health": {"status": g.status.value, "prescriptions_allowed": g.prescriptions_allowed,

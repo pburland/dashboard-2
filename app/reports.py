@@ -110,9 +110,8 @@ def decide(summary: dict) -> dict:
     return {"factor": factor, "why": why}
 
 
-SYSTEM = """You write Patrick's weekly training report. He is an amateur triathlete \
-(IRONMAN 70.3 Puerto Rico on Mar 14 2027 is the main goal) and a self-described AI layman: \
-write plainly, short sentences, no jargon without a one-line explanation.
+SYSTEM = """You write {name}'s weekly training report. {name} is {blurb} Races: {races}
+Write plainly, short sentences, no jargon without a one-line explanation.
 
 Use only the numbers given. Never invent data, never change the plan, never suggest ending a \
 health hold or training through one. Format (markdown, under 220 words):
@@ -122,13 +121,13 @@ health hold or training through one. Format (markdown, under 220 words):
 **Next week** (2-3 bullets: what changes and why, from the plan and the decision given)"""
 
 
-def narrative(summary: dict, decision: dict, next_week: list[dict]) -> tuple[str, str | None]:
+def narrative(summary: dict, decision: dict, next_week: list[dict], system: str | None = None) -> tuple[str, str | None]:
     """(text, model). Falls back to a plain summary if the model is unavailable."""
     try:
         from app import llm
         m = llm.model()
         msg = llm.client().messages.create(
-            model=m, max_tokens=900, system=SYSTEM,
+            model=m, max_tokens=900, system=system or SYSTEM.format(name="the athlete", blurb="", races=""),
             messages=[{"role": "user", "content": json.dumps(
                 {"week": summary, "decision": decision, "next_week_plan": next_week}, default=str)}])
         return llm.text_of(msg), m
@@ -153,7 +152,10 @@ def build(conn, ws: date, *, replan: bool = True, today: date | None = None) -> 
     plans = generator.generate(conn, first, weeks=3, factor=decision["factor"], today=today) if replan else []
     next_week = [{"date": x.date, "title": x.title, "mi": x.distance_mi, "min": x.duration_min}
                  for x in (plans[0].drafts if plans else [])]
-    text, model = narrative(summary, decision, next_week)
+    from app import chat
+    text, model = narrative(summary, decision, next_week,
+                            SYSTEM.format(**{k: v for k, v in chat.identity(conn).items() if k != "assistant"},
+                                          races=chat.races_line(conn)))
     summary["decision"] = decision
     summary["next_week"] = next_week
     summary["next_week_flags"] = plans[0].flags if plans else []

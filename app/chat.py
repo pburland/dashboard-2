@@ -22,12 +22,12 @@ MI = 1609.344
 HISTORY_MESSAGES = 20
 MAX_TOOL_ROUNDS = 4
 
-SYSTEM = """You are Pat-GPT, Patrick's training assistant inside his training app. Patrick is an \
-amateur triathlete in Arlington, VA. Main goal: IRONMAN 70.3 Puerto Rico, Mar 14 2027 (goal 6:23, \
-stretch 6:00). Then IRONMAN Lake Placid, Jul 25 2027. He also lifts.
+SYSTEM = """You are {assistant}, {name}'s training assistant inside their training app. {name} is \
+{blurb}
+Races: {races}
 
 How to answer:
-- Plain language. He calls himself an AI and tech layman. Short answers first, detail if asked.
+- Plain language. Short answers first, detail if asked.
 - Ground every claim in the DATA block below; quote the numbers. If the data doesn't say, say so.
 - Style: direct, plain words, no exclamation marks. One or two sentences unless he asks for more.
 - The plan is made by code (Joe Friel periodization plus safety rules) and re-planned each Sunday. \
@@ -42,7 +42,7 @@ Only his doctor's clearance, recorded in the system, ends it. For anything medic
 - Travel he mentions goes in with add_travel. Lasting preferences ("I lift mornings") go in with \
 save_preference.
 - When he mentions something the system should remember (illness, injury, pain, travel, a missed or \
-extra workout, how he felt, equipment), call log_note. If he reports being sick (fever, mono flare, \
+extra workout, how he felt, equipment), call log_note. If he reports being sick (fever, a flare-up, \
 etc.) or injured badly enough to stop training, call start_health_hold too.
 - Times are local to where he is. Best-time suggestions already account for weather and his work calendar."""
 
@@ -113,6 +113,28 @@ TOOLS = [
          "kind": {"type": "string", "enum": ["illness", "injury"]},
          "reason": {"type": "string"}}, "required": ["kind", "reason"]}},
 ]
+
+
+def identity(conn) -> dict:
+    p = conn.execute("select name, assistant_name, athlete_blurb from profile where id = 1").fetchone() or {}
+    return {"name": p.get("name") or "the athlete", "assistant": p.get("assistant_name") or "Coach",
+            "blurb": p.get("athlete_blurb") or "an endurance athlete."}
+
+
+def races_line(conn) -> str:
+    rows = db.races(conn)
+    if not rows:
+        return "none set."
+    parts = []
+    for r in sorted(rows, key=lambda r: (r["priority"], r["race_date"])):
+        goal = f" (goal {r['goal_time']}" + (f", stretch {r['stretch_time']}" if r["stretch_time"] else "") + ")" \
+            if r["goal_time"] else ""
+        parts.append(f"#{r['priority']} {r['name']}, {r['race_date']:%b %-d %Y}{goal}")
+    return "; ".join(parts) + "."
+
+
+def system_prompt(conn) -> str:
+    return SYSTEM.format(**identity(conn), races=races_line(conn))
 
 
 # ── context ──────────────────────────────────────────────────────────────
@@ -373,7 +395,7 @@ def ask(conn, message: str, conversation_id: int | None = None) -> dict:
     conn.commit()
 
     ctx = context(conn, today)
-    system = [{"type": "text", "text": SYSTEM},
+    system = [{"type": "text", "text": system_prompt(conn)},
               {"type": "text", "text": "DATA (JSON, as of now):\n" + json.dumps(ctx, default=str)}]
     if summary:
         system.append({"type": "text", "text": "Earlier in this conversation (summary):\n" + summary})

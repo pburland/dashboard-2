@@ -16,7 +16,11 @@ from app.ingest import evaluate, garmin as g_ingest, hevy as h_ingest, oura as o
 
 log = logging.getLogger("training.sync")
 SYNC_LOCK = 7_310_2027
-ILLNESS_START = date(2026, 9, 13)     # baseline window ends before the hold
+def baseline_window_end(conn, today: date) -> date:
+    """Resting-HR baseline comes from the 28 days before the first recorded
+    illness (so the illness doesn't skew it), or the last 28 days if none."""
+    r = conn.execute("select min(started_on) as d from health_episodes where kind = 'illness'").fetchone()
+    return (r and r["d"]) or today
 
 
 def _step(summary: dict, name: str, fn, conn) -> None:
@@ -55,7 +59,7 @@ def run(kind: str = "manual", days: int = 3, morning: bool = False, only: tuple[
             def baseline():
                 prof = evaluate.profile(conn)
                 if prof.get("resting_hr_baseline") is None:
-                    b = o_ingest.resting_hr_baseline(conn, ILLNESS_START)
+                    b = o_ingest.resting_hr_baseline(conn, baseline_window_end(conn, today))
                     if b:
                         conn.execute("update profile set resting_hr_baseline = %s, updated_at = now() where id = 1", (b,))
                         return {"resting_hr_baseline": b, "set": True}

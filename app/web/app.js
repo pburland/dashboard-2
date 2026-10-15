@@ -307,6 +307,8 @@ function statusLine(h, phase) {
 }
 
 function renderToday(t, cached) {
+  if (t.athlete?.name) document.querySelector('header h1').textContent = t.athlete.name;
+  if (t.athlete?.assistant) { document.querySelector('[data-tab=ask]').textContent = t.athlete.assistant; store('training.assistant', t.athlete.assistant); }
   $('hdrdate').textContent = fmt(t.today, {weekday: 'short', month: 'short', day: 'numeric'}).toUpperCase();
   $('hdrplace').textContent = t.where && t.where.away ? `${t.where.place} time` : 'server clock';
   $('phase').textContent = (t.phase.name ? `${t.phase.name} · ends ${fmt(t.phase.end, {month: 'short', day: 'numeric'})}` : '')
@@ -428,7 +430,7 @@ async function openChat() {
   if (chatLoaded) return;
   chatLoaded = true;
   const id = load(CONV_KEY);
-  if (!id) { chatMsg('ai', md("Hi Patrick. Ask me anything about your training: today's workout, the best time to fit it in, how last week went, or what comes after the mono hold.")); return; }
+  if (!id) { chatMsg('ai', md("Ask me anything about your training: today's workout, the best time to fit it in, how last week went, or what's coming next.")); return; }
   try {
     const {data} = await api('/api/chat/' + id);
     $('chatlog').innerHTML = '';
@@ -500,7 +502,7 @@ async function renderTrends() {
 
 // ── connections check ───────────────────────────────────────────────────
 const CONN_NAMES = {database: 'Database', garmin: 'Garmin', hevy: 'Hevy', oura: 'Oura', weather: 'Weather',
-                    calendar: 'Work calendar', anthropic: 'Pat-GPT (Anthropic)'};
+                    calendar: 'Work calendar', anthropic: 'Coach (Anthropic)'};
 $('checkconn').onclick = async () => {
   $('connresult').innerHTML = '<section class="card"><div class="muted">Checking… (up to 30 s)</div></section>';
   try {
@@ -641,6 +643,7 @@ async function start() {
   }
 }
 
+try { const a = localStorage.getItem('training.assistant'); if (a) document.querySelector('[data-tab=ask]').textContent = a; } catch {}
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 document.addEventListener('visibilitychange', () => { if (!document.hidden) start(); });
 start();
