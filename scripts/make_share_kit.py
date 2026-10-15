@@ -144,6 +144,7 @@ def main(out_dir: str) -> Path:
             t += EXAMPLE_FILES_FN
         p.write_text(t)
     shutil.copy2(ROOT / "share" / "START_HERE.md", stage / "START_HERE.md")
+    shutil.copy2(ROOT / "share" / "template" / "SETUP.md", stage / "docs" / "SETUP.md")   # generic, not Patrick's
     readme = stage / "README.md"
     readme.write_text("# Training Console\n\nStart with **START_HERE.md**.\n\n" + readme.read_text().split("\n", 2)[-1])
     # Nothing personal or secret may remain.

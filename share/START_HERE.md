@@ -52,7 +52,7 @@ it waiting for accounts.
 | `db/seed/001_athlete.sql` | **Your** profile, races, goals and season: the main thing to edit |
 | `scripts/` | Migrations, backup/restore, Garmin login |
 | `tests/` | ~110 tests. Database tests use example data in `tests/fixtures/` |
-| `docs/SETUP.md` | Step-by-step account setup (written for Patrick; same steps for you) |
+| `docs/SETUP.md` | Step-by-step account setup, in order |
 
 ## The database
 Postgres on Supabase. The main tables: `profile`, `races`, `goals`, `phases` +
@@ -101,38 +101,48 @@ Push notifications need no keys: the server creates its own on first use.
 - `app/planning/generator.py`: `PEAK_LONG_MI` / `LONG_CAP_MI` long-run caps by race distance.
 - `app/web/manifest.webmanifest` / icons: app name and icon.
 
+## Before you start
+- **A Claude Pro or Max plan** (Claude Code is included; about $20/month for Pro).
+- **A GitHub account.**
+- **A computer with Python 3.12 or newer** (python.org → Downloads), only for the
+  one-time Garmin login.
+- **About an hour,** mostly waiting for accounts and deploys.
+
 ## Three steps
-1. **Make an empty private GitHub repo** (e.g. `training-console`) and create the
-   accounts above (you can do Railway/Supabase/Oura while step 2 runs).
-2. **Open Claude Code** (claude.ai/code) on that repo, attach `training-console-kit.zip`,
-   and paste the prompt below.
-3. **Answer its questions and follow its setup walkthrough.** It will ask about your races,
-   goals and weekly schedule, fill in the seed, push the code, and walk you through
-   Supabase, Railway, keys, Garmin, Oura and installing the app on your phone.
+1. **Make the repo and upload the kit.** On github.com: **New repository** → name it
+   (e.g. `training-console`) → **Private** → tick **Add a README** → Create. Then
+   **Add file → Upload files** → drag in `training-console-kit.zip` (don't unzip it) →
+   **Commit changes**. Start the accounts above while step 2 runs.
+2. **Open Claude Code** at claude.ai/code, connect GitHub if asked, pick that repo, and
+   paste the prompt below.
+3. **Answer its questions and follow its setup walkthrough** (it follows
+   `docs/SETUP.md`). It asks about your races, goals and weekly schedule, fills in your
+   profile, pushes the code, and walks you through Supabase, Railway, keys, Garmin, Oura
+   and installing the app on your phone.
 
 ## The prompt to paste
 ```
-I'm attaching training-console-kit.zip: the full code of a friend's personal training app
-(FastAPI on Railway + Supabase Postgres + a phone web app), with his personal data and all
-API keys removed. Build my own version of it in this repository.
+This repository contains training-console-kit.zip: the full code of a friend's personal
+training app (FastAPI on Railway + Supabase Postgres + a phone web app), with his personal
+data and all API keys removed. Build my own version of it in this repository.
 
-1. Unzip the kit into the repository root and read START_HERE.md and docs/SETUP.md first.
+1. Unzip it, move everything inside its training-console/ folder (hidden files too, like
+   .github and .gitignore) to the repository root, delete the zip and the empty folder,
+   and keep my README only if the kit's README isn't better. Then read START_HERE.md and
+   docs/SETUP.md.
 2. Interview me, one question at a time with a recommended answer, about everything in
    START_HERE.md's "Things that are personal" list: my name, time zone and home city, my
    races (date, distance, goal time, priority), strength and body goals, when I can train
-   each day, and what I want my coach chat to be called. Then edit db/seed/001_athlete.sql,
-   timing.py WINDOWS and anything else needed. Keep the season's phases contiguous and
-   ending on my A race.
-3. Run the tests (start a local Postgres for the database tests). They must all pass
-   before you push.
-4. Commit and push to this repository's main branch. Never put a secret in any file or
-   commit.
-5. Walk me through setup in plain language, one step at a time, waiting for me after each:
-   Supabase (Session pooler URL), Railway (deploy from this repo, add each variable from
-   START_HERE.md, generate a domain), my Garmin token (scripts/garmin_login.py on my
-   computer), Oura OAuth (/oauth/oura/start?key=<ADMIN_TOKEN>), Hevy key, the calendar
-   link, then the in-app "Check connections", installing to my iPhone Home Screen and
-   turning on notifications. Use /admin/diagnostics to confirm each integration.
+   each day, notification times, and what I want my coach chat to be called. Then edit
+   db/seed/001_athlete.sql, app/planning/timing.py WINDOWS and anything else needed. Keep
+   the season's phases contiguous and ending on my A race.
+3. Run the tests with a local Postgres for the database tests (TEST_DATABASE_URL). They
+   must all pass before you push.
+4. Commit and push to this repository's main branch (open and merge a pull request if you
+   can't push to main directly). Never put a secret in any file, commit or chat message.
+5. Walk me through docs/SETUP.md in plain language, one step at a time, waiting for me
+   after each, and tell me exactly which value goes in which Railway variable. Never ask
+   me to paste a key or password to you; I type them into Railway myself.
 6. Finish with a short list of anything still not connected.
 Explain things simply; I'll ask if I want detail.
 ```
