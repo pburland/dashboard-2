@@ -109,9 +109,9 @@ To force a sync now: `curl -s -X POST -H "X-Admin-Token: $TOKEN" ".../admin/sync
 - **Lifting weights:** the report ends with next week's weights (also on each
   strength card, and at `GET /api/strength/next`). Enter them in the Hevy
   routines in the "Ironman 26–27" folder. Log an RPE on every working set
-  (Hevy: Settings → Workouts → RPE tracking); the weights come from it. When
+  (turn on RPE tracking in Hevy's workout settings); the weights come from it. When
   Hevy offers to update the routine after a workout, tap No.
-- **Body weight:** log morning weigh-ins in Hevy (Profile → Measurements). The
+- **Body weight:** log morning weigh-ins in Hevy's body measurements. The
   report compares 7-day averages with the plan and adjusts daily calories in
   175 kcal steps (at most ±400) when you lose too fast or too slow two weeks
   running.
