@@ -82,6 +82,10 @@ def targets(rmr: int | None, weight_lb: float | None, sessions: list[dict], *, h
     kind = day_type(sessions)
     maintenance = rmr * NEAT_FACTOR + train
     kcal, why = maintenance, []
+    adj = (plan or {}).get("kcal_adjust") or 0
+    if adj and health == "clear":
+        kcal += adj
+        why.append(f"{adj:+d} from the weekly weight check")
     weekend = day is not None and day.weekday() >= 5
     hard_day = kind in ("key", "long_run", "long_ride")
     if health in ("hold", "return"):
@@ -100,7 +104,7 @@ def targets(rmr: int | None, weight_lb: float | None, sessions: list[dict], *, h
     elif hard_day:
         why.append("fuel the key or long session, no deficit")
     # Energy availability: never plan below the floor.
-    floor = (EA_DEFICIT_FLOOR if kcal < maintenance else EA_HARD_FLOOR) * ffm + train
+    floor = (EA_DEFICIT_FLOOR if kcal < maintenance + adj else EA_HARD_FLOOR) * ffm + train
     if kcal < floor:
         kcal = floor
         why.append("raised to the energy-availability floor")

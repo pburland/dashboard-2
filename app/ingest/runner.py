@@ -75,7 +75,12 @@ def run(kind: str = "manual", days: int = 3, morning: bool = False, only: tuple[
                 return out
 
             def hevy():
-                return h_ingest.sync(conn, clock.tz())
+                out = h_ingest.sync(conn, clock.tz())
+                try:
+                    out |= h_ingest.sync_body(conn)
+                except Exception as e:                     # weigh-ins are a bonus; sets are what matter
+                    out["weigh_ins_error"] = f"{type(e).__name__}: {e}"[:200]
+                return out
 
             def evaluate_all():
                 matched = evaluate.match_planned(conn, start, today)

@@ -88,10 +88,15 @@ def build(conn, today: date, next_days: int = 4, checkin_id: int | None = None) 
     prof = conn.execute("select rmr_kcal from profile where id = 1").fetchone() or {}
     body = conn.execute("select day, weight_lb, bf_pct, lean_lb, fat_lb, source from body_metrics "
                         "where weight_lb is not null and day <= %s order by day desc limit 1", (today,)).fetchone()
+    comp = conn.execute("select day, weight_lb, bf_pct, lean_lb, fat_lb from body_metrics where fat_lb is not null "
+                        "and day <= %s order by day desc limit 1", (today,)).fetchone()
+    if body and comp and body.get("fat_lb") is None:
+        # A plain weigh-in: show the latest scan's composition, dated, alongside today's weight.
+        body = dict(body) | {"bf_pct": comp["bf_pct"], "lean_lb": comp["lean_lb"], "composition_day": comp["day"]}
     deficit_goal = bool(conn.execute("select 1 from goals where kind = 'body_comp' and status = 'active'").fetchone())
     plan = (conn.execute("select target from goals where name = 'Daily targets'").fetchone() or {}) \
         .get("target", {}) or {}
-    ffm = ((body["weight_lb"] - body["fat_lb"]) / 2.2046) if body and body.get("fat_lb") else None
+    ffm = ((comp["weight_lb"] - comp["fat_lb"]) / 2.2046) if comp and comp.get("weight_lb") else None
     fuel = nutrition.targets(prof.get("rmr_kcal"), body and body["weight_lb"], today_sessions,
                              health=g.status.value, phase_kind=phase.get("kind"), deficit_goal=deficit_goal,
                              day=today, plan=plan.get("nutrition_plan"), ffm_kg=ffm)

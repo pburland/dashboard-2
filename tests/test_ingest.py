@@ -159,6 +159,21 @@ def test_hevy_sync_idempotent(conn):
 
 
 @needs_db
+def test_hevy_weigh_ins_never_replace_a_scan(conn_now):
+    conn = conn_now
+    data = {"page": 1, "page_count": 1, "body_measurements": [
+        {"date": "2026-10-20", "weight_kg": 72.1}, {"date": "2026-09-18", "weight_kg": 70.0}]}
+    out = h.sync_body(conn, fetch=lambda path, page, pageSize: data)
+    assert out["weigh_ins"] == 2
+    rows = {r["day"].isoformat(): r for r in conn.execute("select * from body_metrics").fetchall()}
+    assert rows["2026-10-20"]["weight_lb"] == 159.0 and rows["2026-10-20"]["source"] == "hevy"
+    assert rows["2026-09-18"]["source"] == "dexa" and rows["2026-09-18"]["weight_lb"] == 160.0
+    from app import today as view
+    body = view.build(conn, date(2026, 10, 21))["body"]
+    assert body["weight_lb"] == 159.0 and body["bf_pct"] == 19.4 and body["composition_day"] == date(2026, 9, 18)
+
+
+@needs_db
 def test_long_run_gate_go_pending_fallback(conn):
     plan = conn.execute("select * from planned_workouts where plan_date = '2026-10-03' and sport = 'run'").fetchone()
     conn.execute("update profile set resting_hr_baseline = 52")
@@ -277,6 +292,9 @@ def test_weekly_report_saves_and_replans(conn_now, monkeypatch):
     # Re-planned: the next week is in the hold (empty), previews follow clearance.
     n = conn_now.execute("select count(*) n from planned_workouts where source = 'generator'").fetchone()["n"]
     assert n > 0 and r["summary"]["next_week"] == []
+    # Computed sections follow the narrative: weight check, bench checkpoint, next week's weights.
+    assert "**Body weight**" in r["narrative"] and "**Bench**" in r["narrative"]
+    assert "Next week's weights" in r["narrative"] and r["summary"]["next_weights"]["days"]
 
 
 def test_report_decision_rules():

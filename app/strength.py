@@ -33,6 +33,9 @@ BACKOFF = 0.90
 CUT_CAP_LB = 5.0
 REENTRY = (0.75, 0.85, 0.925, 0.975)
 GAP_DAYS = 21
+# Bench e1RM checkpoints (strength report, Oct 2026): date -> smoothed trend to reach.
+BENCH_CHECKPOINTS = [(date(2026, 11, 24), 170), (date(2026, 12, 15), 185), (date(2027, 3, 1), 195),
+                     (date(2027, 7, 25), 190)]
 
 
 @dataclass(frozen=True)
@@ -391,3 +394,16 @@ def attach(conn, days: list[dict]) -> None:
             rows = session_lifts(cache[ws], s.get("title") or "")
             if rows:
                 s["structure"] = dict(s.get("structure") or {}) | {"exercises": rows}
+
+
+def bench_checkpoint(plan: Plan, today: date) -> str:
+    """One line: the bench trend against the next checkpoint."""
+    t = plan.trends.get("Bench Press (Barbell)")
+    nxt = next(((d, v) for d, v in BENCH_CHECKPOINTS if d >= today), None)
+    if not nxt:
+        return ""
+    d, v = nxt
+    if t is None:
+        return f"**Bench**: next checkpoint {v} lb e1RM by {d:%b %-d}; log RPE so the trend can be computed."
+    status = "on track" if t >= v else f"{v - t:.0f} lb to go"
+    return f"**Bench**: trend e1RM {t:.0f} lb; checkpoint {v} by {d:%b %-d}: {status}."

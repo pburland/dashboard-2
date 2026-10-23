@@ -61,3 +61,33 @@ def sync(conn, tz, fetch=api.get) -> dict:
         if page >= int(data.get("page_count") or 1) or not batch:
             break
     return {"workouts": workouts, "sets": sets}
+
+
+BODY_UPSERT = """
+insert into body_metrics (day, weight_lb, source) values (%s, %s, 'hevy')
+on conflict (day) do update set weight_lb = excluded.weight_lb, source = 'hevy'
+ where body_metrics.source not in ('dexa', 'manual')
+"""
+
+
+def sync_body(conn, fetch=api.get) -> dict:
+    """Hevy body measurements (weigh-ins) -> body_metrics.weight_lb. A DEXA or
+    manual entry on the same day wins. Accounts without the endpoint are skipped."""
+    import httpx
+    n = 0
+    for page in range(1, MAX_PAGES + 1):
+        try:
+            data = fetch("/body_measurements", page=page, pageSize=PAGE_SIZE)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code in (404, 405):
+                return {"weigh_ins": 0, "note": "body measurements not available"}
+            raise
+        batch = data.get("body_measurements") or []
+        for m in batch:
+            kg, day = m.get("weight_kg"), m.get("date")
+            if kg and day:
+                conn.execute(BODY_UPSERT, (day[:10], round(kg * KG_TO_LB, 1)))
+                n += 1
+        if page >= int(data.get("page_count") or 1) or not batch:
+            break
+    return {"weigh_ins": n}
