@@ -32,3 +32,5 @@ preview/
 # Generated audit bundle (regenerate with python -m scripts.make_audit_bundle)
 audit/
 share/dist/
+research_notes/
+reports/
