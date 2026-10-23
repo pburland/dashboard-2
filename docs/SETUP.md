@@ -106,6 +106,15 @@ To force a sync now: `curl -s -X POST -H "X-Admin-Token: $TOKEN" ".../admin/sync
 - **Pat-GPT** (tab in the app) answers from your data. It can save notes and
   start a health hold if you report being sick; it can never end one.
 - `GET /admin/diagnostics` now also checks the calendar and the Anthropic key.
+- **Lifting weights:** the report ends with next week's weights (also on each
+  strength card, and at `GET /api/strength/next`). Enter them in the Hevy
+  routines in the "Ironman 26–27" folder. Log an RPE on every working set
+  (Hevy: Settings → Workouts → RPE tracking); the weights come from it. When
+  Hevy offers to update the routine after a workout, tap No.
+- **Body weight:** log morning weigh-ins in Hevy (Profile → Measurements). The
+  report compares 7-day averages with the plan and adjusts daily calories in
+  175 kcal steps (at most ±400) when you lose too fast or too slow two weeks
+  running.
 
 ## 8. Backups (free)
 - **Automatic, weekly (encrypted):** a GitHub Action exports the database
