@@ -4,7 +4,7 @@ Plan of record for food. Numbers for a 72 kg athlete with ~58.3 kg fat-free mass
 
 ## Bottom line
 - 150 lb at 12% needs about -13 lb fat and +3 lb lean during an Ironman build: possible but a stretch. Realistic landing 13-15% (150 lb at ~14% if lean mass holds).
-- Working RMR 1,850 kcal (midpoint of the mono-time 1,958 measurement and the predicted 1,748) until a healthy re-test (Dec/Jan). Daily life ~ RMR x 1.45 (~2,650) plus training.
+- Working RMR 1,850 kcal (midpoint of the mono-time 1,958 measurement and the predicted 1,748) until a healthy re-test (Dec/Jan). Daily life ~ RMR x 1.35 (~2,500; the report said 1.45, lowered toward the GWU lab's 1.3 for an office job) plus training.
 - Deficit only on rest, lift and easy weekdays, never on key or long days or weekends: maintenance to ~Nov 29 (mono return); -400 to -550 kcal in base blocks Nov 30-Dec 20, Dec 28-Jan 17, Jan 25-Feb 14 (a maintenance week between); -200 to -300 Feb 15-28; maintenance Mar 1-21 (70.3 taper, race, recovery); -200 to -350 in Build 2 blocks Mar 22-May 23; maintenance through peak, taper and race week.
 - Rate: 0.4-0.6% bodyweight a week in base, <=0.3-0.4% in build, never over 0.7% (Garthe 2011).
 - Energy availability (intake minus training, per kg fat-free mass): >=30 on deficit days (~1,750 kcal left after training), 40-45 at maintenance, never plan below 25 (IOC REDs 2023). Main risk: underestimating big days, not the planned deficit.

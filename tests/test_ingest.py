@@ -227,7 +227,7 @@ def test_mono_hold_rebase(conn_now):
     assert names == ["IRONMAN Lake Placid", "IRONMAN 70.3 Puerto Rico"]   # A race first; MCM and Jan marathon dropped
     # The early "clearance" is superseded: Sep 25 is inside the mono hold.
     assert view.build(conn_now, date(2026, 9, 25))["health"]["status"] == "hold"
-    assert t["fuel"]["kcal"] == round(1850 * 1.45, -1) and t["body"]["bf_pct"] == 19.4   # hold: maintenance
+    assert t["fuel"]["kcal"] == round(1850 * 1.35, -1) and t["body"]["bf_pct"] == 19.4   # hold: maintenance
     stops = travel.load(conn_now)
     assert travel.place_for(stops, date(2026, 11, 12)).name == "Tokyo"
     assert travel.place_for(stops, date(2026, 11, 24)).name == "Home"

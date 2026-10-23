@@ -4,7 +4,7 @@ Rules from the nutrition report "Recomp and fueling plan" (Oct 2026), held as
 data in the "Daily targets" goal (goals.target.nutrition_plan), so the plan of
 record can change without code:
 
-  calories = working RMR x 1.45 (daily life) + the day's training
+  calories = working RMR x 1.35 (daily life; plan neat_factor) + the day's training
              - the block's deficit on rest, lift and easy days inside a
                deficit block (never on key or long days, weekends, during a
                hold or the return, or below the energy-availability floor)
@@ -80,7 +80,7 @@ def targets(rmr: int | None, weight_lb: float | None, sessions: list[dict], *, h
     sessions = [s for s in sessions if not s.get("suppressed") and s.get("sport") != "race"]
     train = sum(session_kcal(s, weight_lb) for s in sessions)
     kind = day_type(sessions)
-    maintenance = rmr * NEAT_FACTOR + train
+    maintenance = rmr * ((plan or {}).get("neat_factor") or NEAT_FACTOR) + train
     kcal, why = maintenance, []
     adj = (plan or {}).get("kcal_adjust") or 0
     if adj and health == "clear":
