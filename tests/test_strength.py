@@ -78,3 +78,21 @@ def test_coach_reads_the_research_digests():
     if not text:
         pytest.skip("no research digests in this copy")
     assert "Strength digest" in text and "Nutrition digest" in text
+
+
+@needs_db
+def test_strength_sessions_show_their_lifts(conn):
+    from app import today as view
+    from app.planning import generator as g
+    conn.execute("""update health_episodes set criteria_met = '{"physician_clearance":"2026-10-15",
+                    "fever_free_48h":"2026-10-15","rhr_near_baseline_3d":"2026-10-15"}',
+                    return_started_on = '2026-10-15', return_ends_on = '2026-11-04'""")
+    _log(conn, date(2026, 11, 17), "Bench Press (Barbell)", [(150, 5, 8)])
+    ws = date(2026, 11, 30)
+    g.generate(conn, ws, weeks=1, today=ws - timedelta(days=1), use_calendar=False)
+    days = view.plan(conn, ws, 7)["days"]
+    lifts = {s["title"]: s["structure"].get("exercises") for d in days for s in d["sessions"] if s["sport"] == "strength"}
+    push = next(v for k, v in lifts.items() if "Push" in k)
+    assert push[0][0] == "Bench Press (Barbell)" and push[0][2].endswith("lb") and push[1][0].strip() == "back-off"
+    legs = next(v for k, v in lifts.items() if "Legs" in k)
+    assert legs[0][0] == "Squat (Barbell)"

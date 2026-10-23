@@ -82,6 +82,8 @@ def build(conn, today: date, next_days: int = 4, checkin_id: int | None = None) 
     days = [{"date": today, "sessions": today_sessions}] + \
            [{"date": d, "sessions": s} for d, s in sorted(upcoming.items())]
     timing_note = timing.annotate(conn, days, today) if g.prescriptions_allowed else None
+    from app import strength
+    strength.attach(conn, days)
     from app import checkins, nutrition
     prof = conn.execute("select rmr_kcal from profile where id = 1").fetchone() or {}
     body = conn.execute("select day, weight_lb, bf_pct, lean_lb, fat_lb, source from body_metrics "
@@ -142,6 +144,8 @@ def plan(conn, start: date, days: int, today: date | None = None) -> dict:
                            "min": round((r["act_s"] or 0) / 60)}
         out[r["plan_date"]].append(s)
     result = [{"date": d, "sessions": v} for d, v in out.items()]
+    from app import strength
+    strength.attach(conn, result)
     note = None
     if today is not None:
         from app.planning import timing

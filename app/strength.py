@@ -337,3 +337,57 @@ def for_week(conn, ws: date) -> Plan:
     cutting = nutrition._block(target.get("nutrition_plan"), mid) is not None
     recovery = kind in ("base", "build") and idx % 4 == 3
     return recommend(conn, ws, phase_kind=kind, cutting=cutting, recovery_week=recovery)
+
+
+def session_lifts(plan: Plan, title: str) -> list[list[str]]:
+    """Rows [exercise, sets x reps, weight] for one planned strength session,
+    picked from the week's recommendations by the session's name."""
+    t = (title or "").lower()
+    if "bodyweight" in t or "mobility" in t:
+        return []
+    push, pull, legs = (plan.days.get(k, []) for k in ("Push (Tue)", "Pull (Wed)", "Legs (Thu)"))
+    tops = {r.exercise: r for r in push + pull + legs if r.rpe and r.backoff}
+    picks: list[Rec] = []
+    if "full-body" in t:
+        picks = [tops[e] for e in ("Bench Press (Barbell)", "Squat (Barbell)", "Bent Over Row (Barbell)") if e in tops]
+    else:
+        if "push" in t:
+            picks += push
+        if "pull" in t:
+            picks += pull if "hinge" not in t else [r for r in pull if "Deadlift" not in r.exercise] + \
+                [r for r in pull if "Deadlift" in r.exercise][:1]
+        if "legs" in t:
+            picks += legs
+        if "squat" in t and "legs" not in t:
+            picks += [r for r in legs if r.exercise == "Squat (Barbell)"]
+        if "upper" in t and not picks:
+            picks = [r for r in push + pull if r.backoff or r.exercise in ("Overhead Press (Barbell)", "Pull Up")]
+    rows = []
+    seen: set[int] = set()
+    for r in picks:
+        if id(r) in seen:
+            continue
+        seen.add(id(r))
+        load = ("bodyweight" if r.bodyweight else "your choice") if r.load_lb is None else f"{r.load_lb:g} lb"
+        reps = f"{r.sets} × {r.reps}" + (f" @ RPE {r.rpe:g}" if r.rpe else "")
+        rows.append([r.exercise, reps, load])
+        if r.backoff:
+            n, rp, w = r.backoff
+            rows.append(["  back-off", f"{n} × {rp}", f"{w:g} lb"])
+    return rows
+
+
+def attach(conn, days: list[dict]) -> None:
+    """Fill structure.exercises on planned strength sessions (Today and Plan tabs)."""
+    cache: dict[date, Plan] = {}
+    for d in days:
+        for s in d.get("sessions") or []:
+            if s.get("sport") != "strength" or s.get("suppressed") or s.get("status") == "done":
+                continue
+            day = s["date"] if isinstance(s["date"], date) else date.fromisoformat(str(s["date"]))
+            ws = day - timedelta(days=day.weekday())
+            if ws not in cache:
+                cache[ws] = for_week(conn, ws)
+            rows = session_lifts(cache[ws], s.get("title") or "")
+            if rows:
+                s["structure"] = dict(s.get("structure") or {}) | {"exercises": rows}
