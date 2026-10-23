@@ -192,3 +192,14 @@ def test_preview_weeks_are_checked_against_the_weeks_planned_before_them(conn):
     wps = g.generate(conn, date(2026, 10, 5), weeks=3, today=date(2026, 10, 4), use_calendar=False)
     assert not [m for w in wps for m in w.needs_review]
     assert not conn.execute("select 1 from flags where kind = 'needs_review'").fetchone()
+
+
+@needs_db
+def test_friday_replan_does_not_make_up_lifting_days_that_passed(conn):
+    # The template's Tue/Wed/Thu lifts are behind us on Friday: no generic full-body session appears.
+    fri = WS + timedelta(days=4)
+    wp = g.plan_week(conn, WS, basis_mi=18, today=fri)
+    assert not [x for x in wp.drafts if x.sport == "strength"], [x.title for x in wp.drafts]
+    # From Monday the whole template applies: Push, Pull, Legs.
+    full = g.plan_week(conn, WS, basis_mi=18, today=WS - timedelta(days=1))
+    assert sorted(x.date.weekday() for x in full.drafts if x.sport == "strength") == [1, 2, 3]

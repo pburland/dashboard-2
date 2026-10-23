@@ -406,6 +406,7 @@ def plan_week(conn, ws: date, *, basis_mi: float, factor: float = 1.0, hist: His
         """select count(*) as n from planned_workouts where sport = 'strength' and plan_date between %s and %s
            and plan_date < %s and status in ('planned', 'done', 'skipped')""",
         (ws, ws + timedelta(days=6), today)).fetchone()["n"] if today > ws else 0
+    template_strength = sum(1 for x in drafts if x.sport == "strength")     # the whole week's, before past days go
     drafts = [x for x in drafts if x.date >= today or x.structure.get("gen_key") in missed_keys]
     # What's already done this week counts toward its load and volume.
     done = [PlannedSession(r["plan_date"], r["sport"], r["title"], r["duration_min"] or 0, r["max_zone"] or "Z2",
@@ -430,7 +431,7 @@ def plan_week(conn, ws: date, *, basis_mi: float, factor: float = 1.0, hist: His
     review: list[str] = []
     drafts = _place(drafts, ws, today, gate_for, cal, stops, missed_keys, review)
     drafts = _place_strength(drafts, ws, today, kind, gate_for, stops, returning=g_mid.status is Status.RETURN,
-                             already=past_strength)
+                             already=past_strength, template_total=template_strength)
     caps = (conn.execute("select daily_minutes from profile where id = 1").fetchone() or {}).get("daily_minutes") or {}
     _daily_cap(drafts, caps.get("default", 210), caps.get("weekend", caps.get("default", 210)))
 
@@ -635,7 +636,7 @@ def _place(drafts: list[Draft], ws: date, today: date, gate_for, cal: Calendar, 
 
 
 def _place_strength(drafts: list[Draft], ws: date, today: date, kind: str, gate_for, stops,
-                    returning: bool, already: int = 0) -> list[Draft]:
+                    returning: bool, already: int = 0, template_total: int | None = None) -> list[Draft]:
     """Concurrent-training rules as constraints (Strength plan, Oct 2026):
     N sessions a week for the phase; heavy legs never on a key-endurance day
     or the day before a long run or ride (Thursday legs before Saturday's ride
@@ -644,7 +645,13 @@ def _place_strength(drafts: list[Draft], ws: date, today: date, kind: str, gate_
     endurance session."""
     template = [x for x in drafts if x.sport == "strength"]
     endurance = [x for x in drafts if x.sport != "strength"]
-    n = max(0, max(STRENGTH_PER_WEEK.get("return" if returning else kind, 2), len(template)) - already)
+    per_week = STRENGTH_PER_WEEK.get("return" if returning else kind, 2)
+    total = len(template) if template_total is None else template_total
+    n = max(0, max(per_week, len(template)) - already)
+    if total >= per_week:
+        # The phase's own template already holds the week's sessions: lifting days that
+        # have passed are not made up with an extra full-body session later in the week.
+        n = min(n, len(template))
     days = [ws + timedelta(days=i) for i in range(7)]
     key_days = {x.date for x in endurance if x.is_key}
     long_days = {x.date for x in endurance if x.is_long or (x.sport == "bike" and x.kind == "long")}
