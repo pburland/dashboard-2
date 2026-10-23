@@ -293,10 +293,14 @@ function wireCheckin() {
 function fuelCard(f, b) {
   if (!f) return '';
   const n = x => Number(x).toLocaleString('en-US');
-  const body = b ? `<div class="n4m" style="margin-top:8px">${b.source === 'dexa' ? 'DEXA' : 'Weight'} ${fmt(b.day, {month: 'short', day: 'numeric'})}: ${esc(b.weight_lb)} lb${b.bf_pct != null ? ` · ${esc(b.bf_pct)}% fat` : ''}${b.lean_lb != null ? ` · ${Math.round(b.lean_lb)} lb lean` : ''}</div>` : '';
+  const scan = b && b.composition_day ? ` (DEXA ${fmt(b.composition_day, {month: 'short', day: 'numeric'})})` : '';
+  const body = b ? `<div class="n4m" style="margin-top:8px">${b.source === 'dexa' ? 'DEXA' : 'Weight'} ${fmt(b.day, {month: 'short', day: 'numeric'})}: ${esc(b.weight_lb)} lb${b.bf_pct != null ? ` · ${esc(b.bf_pct)}% fat` : ''}${b.lean_lb != null ? ` · ${Math.round(b.lean_lb)} lb lean` : ''}${scan}</div>` : '';
+  const day = {rest: 'Rest day', lift: 'Lifting day', easy: 'Easy day', lift_easy: 'Lift + easy day', key: 'Key session day',
+               long_run: 'Long run day', long_ride: 'Long ride day'}[f.day_type];
   return `<section class="card"><div class="label">Fuel today</div>
     <div class="readiness"><div><b>${n(f.kcal)}</b><span>calories</span></div>
     <div><b>${f.protein_g}g</b><span>protein</span></div><div><b>${f.carbs_g}g</b><span>carbs</span></div></div>
+    ${day ? `<div class="n4m" style="margin-top:8px">${esc(day)}${f.fat_min_g ? ` · fat at least ${f.fat_min_g} g` : ''}</div>` : ''}
     ${f.why.length ? `<div class="n4m" style="margin-top:8px">${esc(f.why.join('; '))}</div>` : ''}${body}</section>`;
 }
 
@@ -318,7 +322,7 @@ function renderToday(t, cached) {
       <div class="badge">Goal #${r.priority} · ${esc(r.distance)}${r.status === 'uncertain' ? ' · uncertain' : ''}</div>
       <div class="days">${r.days_until}<small>days</small></div>
       <div class="name">${esc(r.name.replace('IRONMAN ', 'IM '))}</div>
-      <div class="meta">${r.goal_time ? 'Goal ' + esc(hm(r.goal_time)) : r.priority === 2 ? 'Target after PR' : 'No time goal'}${r.stretch_time ? ' · stretch ' + esc(hm(r.stretch_time)) : ''}</div></div>`).join('');
+      <div class="meta">${r.goal_time ? 'Goal ' + esc(hm(r.goal_time)) : 'Goal: finish strong'}${r.stretch_time ? ' · stretch ' + esc(hm(r.stretch_time)) : ''}</div></div>`).join('');
   const sessions = t.sessions.filter(s => !s.suppressed);
   let todayHtml = statusLine(t.health, t.phase) + checkinCard(t.pending_checkin)
     + (t.proposals || []).map(p => `<section class="card">${proposalCard(p)}</section>`).join('');

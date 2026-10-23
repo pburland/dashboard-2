@@ -175,16 +175,26 @@ def _sets_by_week(conn, exercise: str, before: date) -> list[tuple[date, list[di
 
 
 def _trend(weeks: list[tuple[date, list[dict]]]) -> tuple[float | None, list[float]]:
-    t, series = None, []
-    for _, sets in weeks:
+    """Smoothed weekly best e1RM. Restarts after a layoff (3+ weeks off) and tracks the
+    comeback weeks directly (re-baselining, as the report specifies); then a jump of
+    more than 5% counts as noise (alpha 0.15) unless the week before jumped the
+    same way, which makes it a real change (alpha 0.3)."""
+    t, series, prev_ws, prev_dir, since = None, [], None, 0, 0
+    for ws, sets in weeks:
         best = max((e for s in sets if (e := e1rm(s["weight_lb"], s["reps"], s["rpe"]))), default=None)
         if best is None:
             continue
-        if t is None:
-            t = best
+        restart = t is None or (prev_ws and (ws - prev_ws).days > GAP_DAYS + 7)
+        since = 0 if restart else since + 1
+        if restart or since < len(REENTRY):
+            t, prev_dir = best, 0            # the comeback weeks re-baseline the trend; smoothing starts after
         else:
-            a = ALPHA_NOISY if abs(best - t) / t > NOISE else ALPHA
+            jump = (best - t) / t
+            d = (jump > NOISE) - (jump < -NOISE)
+            a = ALPHA_NOISY if d and d != prev_dir else ALPHA
             t = a * best + (1 - a) * t
+            prev_dir = d
+        prev_ws = ws
         series.append(t)
     return t, series
 

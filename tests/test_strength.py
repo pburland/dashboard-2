@@ -96,3 +96,15 @@ def test_strength_sessions_show_their_lifts(conn):
     assert push[0][0] == "Bench Press (Barbell)" and push[0][2].endswith("lb") and push[1][0].strip() == "back-off"
     legs = next(v for k, v in lifts.items() if "Legs" in k)
     assert legs[0][0] == "Squat (Barbell)"
+
+
+def test_trend_restarts_after_a_layoff_and_follows_a_steady_climb():
+    def wk(d, lb):
+        return (d, [{"weight_lb": lb, "reps": 5, "rpe": 7.0}])
+    old = [wk(date(2026, 8, 31), 165), wk(date(2026, 9, 7), 165)]
+    back = [wk(date(2026, 10, 26), 115), wk(date(2026, 11, 2), 130), wk(date(2026, 11, 23), 145)]
+    t, series = s._trend(old + back)
+    # Restarted at the comeback (not dragged down by the pre-illness weeks) ...
+    assert series[2] == s.e1rm(115, 5, 7)
+    # ... and a repeated climb isn't damped as noise: within ~10% of the latest set.
+    assert t > 0.9 * s.e1rm(145, 5, 7)
