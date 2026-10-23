@@ -128,6 +128,13 @@ def submit(conn, *, planned_workout_id: int | None = None, activity_id: int | No
                returning *""", vals).fetchone()
 
     effects: list[str] = []
+    if note and note.strip():
+        # Anything typed goes to the weekly notes at once, so the coach and the report see it.
+        what = plan["title"] if plan else "Workout"
+        conn.execute("""insert into weekly_notes (week_start, note_date, type, text, source)
+                        values (%s, %s, 'context', %s, 'checkin')""",
+                     (on - timedelta(days=on.weekday()), on, f"{what}: {note.strip()}"))
+        effects.append("Your note is saved for the coach and this week's report.")
     if felt == "bad" or pain:
         until = on + timedelta(days=CAUTION_DAYS)
         effects.append(f"This caps intensity at Z2 and holds your long run through {until:%A}.")

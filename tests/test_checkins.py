@@ -96,3 +96,14 @@ def test_checkin_reason_shows_during_return_too(conn):
     checkins.submit(conn, planned_workout_id=pid, rpe=5, felt="bad")
     h = view.build(conn, d + timedelta(days=1))["health"]
     assert h["status"] == "return" and h["reasons"][0].startswith("Yesterday's check-in: felt bad")
+
+
+@needs_db
+def test_a_typed_note_goes_to_the_weekly_notes(conn):
+    from app import checkins
+    pid = _session(conn, MON)
+    r = checkins.submit(conn, planned_workout_id=pid, rpe=4, felt="good", pain=False, note="Legs heavy from Saturday")
+    assert any("saved for the coach" in e for e in r["effects"])
+    n = conn.execute("select type, text, source, week_start from weekly_notes where source = 'checkin'").fetchone()
+    assert n["type"] == "context" and n["text"] == "Easy run: Legs heavy from Saturday"
+    assert n["week_start"] == MON - timedelta(days=MON.weekday())

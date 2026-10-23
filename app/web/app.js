@@ -248,6 +248,7 @@ function checkinCard(p) {
     <div class="ci-q">Felt:</div><div class="ci-row ci-felt"><button type="button" data-felt="good">Good</button><button type="button" data-felt="fine">Fine</button><button type="button" data-felt="bad">Bad</button></div>
     <div class="ci-q">Any pain?</div><div class="ci-row ci-pain"><button type="button" data-pain="0">No</button><button type="button" data-pain="1">Yes</button></div>
     <input id="ci-where" type="text" placeholder="Where?" maxlength="200" hidden>
+    <input id="ci-note" type="text" placeholder="Anything else? (optional)" maxlength="1000">
     <button class="primary-btn" id="ci-done" disabled>Done.</button>
     ${p.planned_workout_id && !p.activity_id ? `<div class="ci-skip"><button class="btn-link" id="ci-skip">Didn't do it</button>
       <div class="ci-row" id="ci-why" hidden>${['busy', 'tired', 'sick', 'weather'].map(r => `<button type="button" data-why="${r}">${r[0].toUpperCase() + r.slice(1)}</button>`).join('')}<button type="button" data-why="">Skip reason</button></div></div>` : ''}
@@ -280,7 +281,8 @@ function wireCheckin() {
     try {
       const r = await post('/api/checkin', {planned_workout_id: card.dataset.pid ? Number(card.dataset.pid) : null,
         activity_id: card.dataset.aid ? Number(card.dataset.aid) : null, rpe: st.rpe, felt: st.felt, pain: st.pain,
-        pain_detail: st.pain ? $('ci-where').value.trim() || null : null}, 15000);
+        pain_detail: st.pain ? $('ci-where').value.trim() || null : null,
+        note: $('ci-note').value.trim() || null}, 15000);
       card.innerHTML = `<div class="label">Checked in</div><div>${esc(r.effects.length ? r.effects.join(' ') : 'Saved.')}</div>`;
       if (r.effects.length) setTimeout(start, 600);       // the gate changed: refresh Today
     } catch (e) {
