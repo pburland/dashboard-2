@@ -17,6 +17,8 @@ from app.analysis.load import estimate_planned_load, session_share
 from app.health.state import RETURN_LONG_RUN_CAP, Gate, Status
 from app.periodization.zones import at_or_below
 
+LEGS_BEFORE_LONG_DAYS = 1      # heavy legs no closer than 2 days before a long run or ride
+
 
 @dataclass(frozen=True)
 class PlannedSession:
@@ -88,14 +90,15 @@ def validate_week(sessions: list[PlannedSession], history: History,
             if sf:
                 f.append(sf)
 
-    # Friel concurrent rule: no heavy lower-body strength within 2 days
-    # before a long run or long ride.
+    # Concurrent rule: no heavy lower-body strength the day before (or the day
+    # of) a long run or ride. Two days out (~48 h, Thursday legs before a
+    # Saturday ride) is fine once the legs are used to it (Strength plan, Oct 2026).
     longs = [s for s in sessions if s.is_long and s.sport in ("run", "bike")]
     for i, s in enumerate(sessions):
         if s.sport == "strength" and s.heavy_lower:
             for l in longs:
                 gap = (l.date - s.date).days
-                if 0 <= gap <= 2:
+                if 0 <= gap <= LEGS_BEFORE_LONG_DAYS:
                     flags[i].append(Flag("strength_before_long", Severity.WARN,
                                          f"Heavy lower-body strength {gap} day(s) before "
                                          f"{l.title}. Move it earlier in the week."))

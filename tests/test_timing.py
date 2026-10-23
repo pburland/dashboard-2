@@ -15,8 +15,8 @@ def _dt(d, h, m=0):
 
 
 def test_windows_and_busy():
-    slots = timing.free_slots(TUE, ET, [(_dt(TUE, 7), _dt(TUE, 9))])
-    assert slots == [(_dt(TUE, 5, 30), _dt(TUE, 7)), (_dt(TUE, 18), _dt(TUE, 21, 30))]
+    slots = timing.free_slots(TUE, ET, [(_dt(TUE, 7), _dt(TUE, 9)), (_dt(TUE, 17), _dt(TUE, 18))])
+    assert slots == [(_dt(TUE, 16, 30), _dt(TUE, 17)), (_dt(TUE, 18), _dt(TUE, 21, 30))]   # weekdays: after 4:30 PM
     sun = timing.free_slots(SUN, ET, [])
     assert sun == [(_dt(SUN, 6), _dt(SUN, 9)), (_dt(SUN, 13), _dt(SUN, 20))]
     away = timing.free_slots(TUE, ET, [(_dt(TUE, 7), _dt(TUE, 19))], away=True)
@@ -31,7 +31,7 @@ def test_best_time_prefers_comfort_and_avoids_rain():
     # and the 2-5 PM rain is never picked.
     assert (s.start.hour, s.feels_f, s.precip_pct) == (8, 48, 0)
     indoor = timing.best_time(TUE, 45, "strength", timing.free_slots(TUE, ET, []))
-    assert indoor.start == _dt(TUE, 6)                 # 5:30 only if clearly better
+    assert indoor.start == _dt(TUE, 16, 30)            # weekdays start at 4:30 PM
 
 
 def test_heat_no_go_never_suggested():

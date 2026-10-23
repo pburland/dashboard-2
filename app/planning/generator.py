@@ -45,15 +45,16 @@ HR_CAP, WALK_OVER = 140, 150
 MAX_RAMP = 1.10
 LONG_SHARE = 0.33
 # Run long-run caps by phase kind for a 70.3 build (a marathon block would raise build/peak).
-LONG_CAP_MI = {"base": 12.0, "build": 13.0, "peak": 13.0, "race": 8.0, "return": 8.0, "transition": 3.0}
+LONG_CAP_MI = {"base": 12.0, "build": 15.0, "peak": 16.0, "race": 8.0, "return": 8.0, "transition": 3.0}
 # Longest run worth doing before a race, by distance (conservative).
-PEAK_LONG_MI = {"70.3": 12.5, "140.6": 18.0, "marathon": 20.0, "half": 12.0}
+PEAK_LONG_MI = {"70.3": 12.5, "140.6": 16.0, "marathon": 20.0, "half": 12.0}
 RECOVERY_EVERY = 4            # 3 weeks building, 1 lighter (Friel)
 RECOVERY_FACTOR = 0.8
 PHASE_FACTOR = {"race": 0.7, "transition": 0.3}
 PREVIEW_FACTOR = 1.08         # previews assume the week goes to plan
 MIN_WEEK_MI = 6.0
-STRENGTH_PER_WEEK = {"prep": 3, "base": 3, "build": 2, "peak": 1, "race": 0, "transition": 1, "return": 2}
+# Sessions a week when the phase template names fewer (a template naming more wins).
+STRENGTH_PER_WEEK = {"prep": 3, "base": 3, "build": 2, "peak": 1, "race": 0, "transition": 1, "return": 3}
 KEY_KINDS = {("run", "long"), ("run", "tempo"), ("run", "race_pace"), ("bike", "long"),
              ("bike", "threshold"), ("swim", "css")}
 RELAX_ATTEMPTS = 3
@@ -130,7 +131,8 @@ def parse_strength(label: str | None) -> tuple[str, bool] | None:
     if "bodyweight" in t:
         return ("bodyweight", False)
     light = "light" in t or "rpe 6" in t or "mobility" in t or "maintenance" in t or "moderate" in t
-    return ("light" if light else "heavy", ("lower" in t or "full-body" in t) and not light)
+    legs = any(w in t for w in ("lower", "full-body", "legs", "squat"))
+    return ("light" if light else "heavy", legs and not light)
 
 
 # ── long-run ladder ──────────────────────────────────────────────────────
@@ -293,7 +295,12 @@ class WeekPlan:
 
 
 def _a_race(conn, d: date) -> dict | None:
+    """The race the block builds toward: the next A or B race (a B race gets
+    its own taper), else the highest-priority one ahead."""
     rows = [r for r in db.races(conn) if r["race_date"] >= d]
+    ab = [r for r in rows if r["priority"] <= 2]
+    if ab:
+        return min(ab, key=lambda r: r["race_date"])
     return min(rows, key=lambda r: (r["priority"], r["race_date"])) if rows else None
 
 
@@ -416,16 +423,16 @@ def plan_week(conn, ws: date, *, basis_mi: float, factor: float = 1.0, hist: His
                      if a_race else None)
     peak = PEAK_LONG_MI.get(a_race["distance"], 12.0) if a_race else 12.0
     _size_runs(drafts, target, kind, hist, gate_for, recovery, week_idx, weeks_to_race, peak, week_target)
-    _size_other(drafts, kind, gate_for, weeks_in, recovery, bounds)
+    _size_other(drafts, kind, gate_for, weeks_in, recovery, bounds,
+                distance=a_race["distance"] if a_race else None, week_idx=week_idx)
 
     # Placement: travel, missed key sessions, free time, strength rules, daily cap.
     review: list[str] = []
     drafts = _place(drafts, ws, today, gate_for, cal, stops, missed_keys, review)
     drafts = _place_strength(drafts, ws, today, kind, gate_for, stops, returning=g_mid.status is Status.RETURN,
                              already=past_strength)
-    cap = ((conn.execute("select daily_minutes from profile where id = 1").fetchone() or {})
-           .get("daily_minutes") or {}).get("default", 210)
-    _daily_cap(drafts, cap)
+    caps = (conn.execute("select daily_minutes from profile where id = 1").fetchone() or {}).get("daily_minutes") or {}
+    _daily_cap(drafts, caps.get("default", 210), caps.get("weekend", caps.get("default", 210)))
 
     for x in drafts:
         g = gate_for(x.date)
@@ -524,10 +531,15 @@ BIKE_MIN = {"return": 35, "base": 50, "build": 60, "peak": 60, "race": 35, "tran
 # Long ride: starts at 75 min, +15 min a building week, up to the phase cap.
 LONG_BIKE_START, LONG_BIKE_STEP = 75, 15
 LONG_BIKE_CAP = {"base": 150, "build": 180, "peak": 210, "race": 60, "transition": 60}
+# Toward a full Ironman the long ride keeps growing: +15 min a week from the
+# previous phase's cap, so the jump between phases is never more than one step.
+LONG_BIKE_CAP_IM = {"base": 150, "build": 300, "peak": 360, "race": 60, "transition": 60}
+LONG_BIKE_RAMP_FROM = {"build": 150, "peak": 285}
 
 
 def _size_other(drafts: list[Draft], kind: str, gate_for, weeks_in: int, recovery: bool,
-                bounds: dict[str, tuple[float, float]]) -> None:
+                bounds: dict[str, tuple[float, float]], distance: str | None = None, week_idx: int = 0) -> None:
+    im = distance == "140.6"
     for x in drafts:
         returning = gate_for(x.date).status is Status.RETURN
         k = "return" if returning else kind
@@ -537,6 +549,8 @@ def _size_other(drafts: list[Draft], kind: str, gate_for, weeks_in: int, recover
         elif x.sport == "bike":
             if x.kind == "long" and not returning:
                 build = min(LONG_BIKE_CAP.get(k, 120), LONG_BIKE_START + LONG_BIKE_STEP * weeks_in)
+                if im and k in LONG_BIKE_RAMP_FROM:
+                    build = min(LONG_BIKE_CAP_IM[k], LONG_BIKE_RAMP_FROM[k] + LONG_BIKE_STEP * (week_idx + 1))
                 x.duration_min = round(build * (0.75 if recovery else 1.0) / 5) * 5
             else:
                 x.duration_min = BIKE_MIN.get(k, 45)
@@ -622,24 +636,26 @@ def _place(drafts: list[Draft], ws: date, today: date, gate_for, cal: Calendar, 
 
 def _place_strength(drafts: list[Draft], ws: date, today: date, kind: str, gate_for, stops,
                     returning: bool, already: int = 0) -> list[Draft]:
-    """Friel's concurrent rules as constraints: N sessions a week for the
-    phase; never on a key-endurance day; heavy lower body never within 2
-    days before a long run or ride. If a template day breaks a rule, the
-    strength session moves, not the endurance session."""
+    """Concurrent-training rules as constraints (Strength plan, Oct 2026):
+    N sessions a week for the phase; heavy legs never on a key-endurance day
+    or the day before a long run or ride (Thursday legs before Saturday's ride
+    is fine, ~48 h); upper-body work may share a key day (key session first).
+    If a template day breaks a rule, the strength session moves, not the
+    endurance session."""
     template = [x for x in drafts if x.sport == "strength"]
     endurance = [x for x in drafts if x.sport != "strength"]
-    n = max(0, STRENGTH_PER_WEEK.get("return" if returning else kind, 2) - already)
+    n = max(0, max(STRENGTH_PER_WEEK.get("return" if returning else kind, 2), len(template)) - already)
     days = [ws + timedelta(days=i) for i in range(7)]
     key_days = {x.date for x in endurance if x.is_key}
     long_days = {x.date for x in endurance if x.is_long or (x.sport == "bike" and x.kind == "long")}
 
     def ok(d: date, heavy_lower: bool, used: set) -> bool:
-        if d in used or d in key_days or not gate_for(d).prescriptions_allowed:
+        if d in used or (heavy_lower and d in key_days) or not gate_for(d).prescriptions_allowed:
             return False
         place = travel.place_for(stops, d)
         if place.away and not place.sports:
             return False
-        if heavy_lower and any(0 <= (L - d).days <= 2 for L in long_days):
+        if heavy_lower and any(0 <= (L - d).days <= 1 for L in long_days):
             return False
         return True
 
@@ -672,16 +688,17 @@ def _place_strength(drafts: list[Draft], ws: date, today: date, kind: str, gate_
     return sorted(endurance + placed, key=lambda x: (x.date, x.sport == "strength"))
 
 
-def _daily_cap(drafts: list[Draft], cap: int) -> None:
+def _daily_cap(drafts: list[Draft], cap: int, weekend_cap: int | None = None) -> None:
     by_day: dict[date, list[Draft]] = {}
     for x in drafts:
         by_day.setdefault(x.date, []).append(x)
-    for items in by_day.values():
+    for d, items in by_day.items():
+        limit = weekend_cap if weekend_cap and d.weekday() >= 5 else cap
         total = sum(x.duration_min or 0 for x in items)
         for x in sorted(items, key=lambda x: (x.is_key, -(x.duration_min or 0))):
-            if total <= cap:
+            if total <= limit:
                 break
-            cut = min(total - cap, (x.duration_min or 0) - 20)
+            cut = min(total - limit, (x.duration_min or 0) - 20)
             if cut > 0:
                 x.duration_min -= cut
                 if x.sport == "run" and x.distance_mi:

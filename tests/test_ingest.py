@@ -193,9 +193,9 @@ def test_today_view(conn):
     # Oct 3's go/no-go is visible all week, and pending until the runs happen.
     gate = t["long_run_gate"]
     assert gate["date"] == date(2026, 10, 3) and gate["verdict"] == "pending"
-    # Each session gets a best time inside the training windows (Friday: before 8 AM or after 6 PM).
+    # Each session gets a best time inside the training windows (Friday: after 4:30 PM).
     bt = t["sessions"][0]["best_time"]
-    assert bt["label"] and (bt["start"][11:13] in ("05", "06", "07", "18", "19", "20", "21"))
+    assert bt["label"] and (bt["start"][11:16] >= "16:30")
     assert t["timing_note"] == "work calendar not connected"
 
 
@@ -209,7 +209,7 @@ def test_mono_hold_rebase(conn_now):
     assert t["phase"]["name"] == "Health hold (mono)"
     assert t["phase"]["start"] == date(2026, 9, 15)                 # one hold from Sep 15
     names = [r["name"] for r in t["races"]]
-    assert names == ["IRONMAN 70.3 Puerto Rico", "IRONMAN Lake Placid"]   # MCM dropped, Jan marathon on hold
+    assert names == ["IRONMAN Lake Placid", "IRONMAN 70.3 Puerto Rico"]   # A race first; MCM and Jan marathon dropped
     # The early "clearance" is superseded: Sep 25 is inside the mono hold.
     assert view.build(conn_now, date(2026, 9, 25))["health"]["status"] == "hold"
     assert t["fuel"]["kcal"] == 2550 and t["body"]["bf_pct"] == 19.4

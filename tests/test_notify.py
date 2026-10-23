@@ -85,7 +85,8 @@ def test_evening_workout_and_checkin_reminder(conn, monkeypatch):
     conn.execute("insert into check_ins (planned_workout_id, check_in_on, rpe, felt) values (%s, %s, 4, 'good')",
                  (pid, tue))
     conn.commit()
-    notify.dispatch(conn, max(r["not_before"] for r in rem) + timedelta(minutes=1))
+    # (A late evening reminder can land in quiet hours; by next morning everything is due.)
+    notify.dispatch(conn, max(max(r["not_before"] for r in rem) + timedelta(minutes=1), at(tue + timedelta(days=1), 6)))
     status = conn.execute("select status from notifications where kind = 'checkin' and (data->>'planned_workout_id')::int = %s",
                           (pid,)).fetchone()["status"]
     assert status == "skipped"

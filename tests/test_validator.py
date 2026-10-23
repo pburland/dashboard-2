@@ -14,7 +14,7 @@ def week(long_mi=12.5, long_zone="Z2"):
         PlannedSession(date(2026, 9, 7), "strength", "Lower", 50, heavy_lower=True),
         PlannedSession(date(2026, 9, 9), "run", "Easy", 40, distance_mi=4),
         PlannedSession(date(2026, 9, 10), "run", "Easy", 42, distance_mi=4),
-        PlannedSession(date(2026, 9, 11), "strength", "Lower (moved)", 45, heavy_lower=True),
+        PlannedSession(date(2026, 9, 12), "strength", "Lower (moved)", 45, heavy_lower=True),
         PlannedSession(date(2026, 9, 13), "run", "Long run", 130, zone=long_zone,
                        distance_mi=long_mi, is_long=True),
     ]

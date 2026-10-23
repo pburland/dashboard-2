@@ -95,9 +95,11 @@ def test_strength_follows_concurrent_rules(conn):
     key_days = {r["plan_date"] for r in rows if r["is_key"]}
     long_days = {r["plan_date"] for r in rows if r["is_long"]}
     for s in strength:
-        assert s["plan_date"] not in key_days
-        if (s["structure"] or {}).get("heavy_lower"):
-            assert not any(0 <= (L - s["plan_date"]).days <= 2 for L in long_days)
+        if (s["structure"] or {}).get("heavy_lower"):     # upper body may share a key day
+            assert s["plan_date"] not in key_days
+            assert not any(0 <= (L - s["plan_date"]).days <= 1 for L in long_days)
+    # Push / Pull / Legs on Tue / Wed / Thu; Thursday legs ~48 h before Saturday's long ride is allowed.
+    assert sorted(s["plan_date"].weekday() for s in strength) == [1, 2, 3]
 
 
 @needs_db
@@ -118,8 +120,8 @@ def test_a_change_supersedes_and_audits(conn):
     g.generate(conn, WS, weeks=1, today=WS - timedelta(days=1), trigger="rebase", use_calendar=False)
     rows = _live(conn, WS)
     assert not [r for r in rows if r["plan_date"] == WS + timedelta(days=5)]          # nothing on the flight day
-    lr = [r for r in rows if r["is_long"] and r["sport"] == "run"]
-    assert lr and lr[0]["plan_date"] == WS + timedelta(days=6)                         # long run moved to Sunday
+    ride = [r for r in rows if r["is_long"] and r["sport"] == "bike"]
+    assert ride and ride[0]["plan_date"] == WS + timedelta(days=6)                     # long ride moved to Sunday
     audit = conn.execute("select action, source, reason from plan_changes").fetchall()
     assert any(a["action"] == "move" for a in audit) and all(a["source"] == "generator" for a in audit)
     assert conn.execute("select count(*) n from planned_workouts where status = 'superseded' "
@@ -134,8 +136,12 @@ def test_busy_saturday_moves_the_long_session(conn):
     wp = g.plan_week(conn, WS, basis_mi=18, today=WS - timedelta(days=1), cal=cal)
     sat = [x for x in wp.drafts if x.date == WS + timedelta(days=5)]
     assert not [x for x in sat if x.is_key]
+    # Saturday's long ride takes Sunday; Sunday's long run then moves off the clash.
+    ride = [x for x in wp.drafts if x.sport == "bike" and x.is_long][0]
+    assert ride.date == WS + timedelta(days=6) and ride.structure["moved_from"]["why"] == "no free time"
     lr = [x for x in wp.drafts if x.sport == "run" and x.is_long][0]
-    assert lr.date == WS + timedelta(days=6) and lr.structure["moved_from"]["why"] == "no free time"
+    assert lr.date not in (WS + timedelta(days=5), WS + timedelta(days=6))
+    assert lr.structure["moved_from"]["why"] == "clash with another key session"
 
 
 @needs_db

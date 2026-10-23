@@ -2,7 +2,7 @@
 work-calendar events, and (outdoors) in the most comfortable weather.
 
 Windows (local time where he is):
-  weekdays  before 8 AM and after 6 PM
+  weekdays  after 4:30 PM (office days, no mornings; Patrick, Oct 2026)
   Saturday  free
   Sunday    free except 9 AM - 1 PM
   on a trip every day free, 6 AM - 8 PM; the work calendar is ignored
@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 from app.analysis.heat import THRESHOLDS, HourlyWeather, heat_index_f
 
 WINDOWS: dict[int, list[tuple[time, time]]] = {
-    **{d: [(time(5, 30), time(8, 0)), (time(18, 0), time(21, 30))] for d in range(5)},
+    **{d: [(time(16, 30), time(21, 30))] for d in range(5)},
     5: [(time(6, 0), time(20, 0))],
     6: [(time(6, 0), time(9, 0)), (time(13, 0), time(20, 0))],
 }
