@@ -91,13 +91,30 @@ def test_sixteen_on_oct10_needs_13_5_on_oct3():
 
 
 def test_fuel_targets():
+    from datetime import date
     from app import nutrition
     run = {"sport": "run", "distance_mi": 5, "duration_min": 55, "max_zone": "Z2"}
+    plan = {"rmr_working_kcal": 1850, "protein_g": 160,
+            "deficit_blocks": [{"name": "base deficit 1", "from": "2026-11-30", "to": "2026-12-20", "kcal": 475}]}
     hold = nutrition.targets(1958, 160, [], health="hold", phase_kind="hold", deficit_goal=True)
-    assert hold["kcal"] == 2550 and hold["protein_g"] == 160 and hold["training_kcal"] == 0
-    easy = nutrition.targets(1958, 160, [run], health="clear", phase_kind="base", deficit_goal=True)
-    assert easy["kcal"] == round(1958 * 1.3 + 5 * 160 * 0.72 - 300, -1)
-    long = nutrition.targets(1958, 160, [run | {"distance_mi": 10, "is_long": True}],
-                             health="clear", phase_kind="base", deficit_goal=True)
-    assert not any("under maintenance" in w for w in long["why"]) and long["carbs_g"] == 510
+    assert hold["kcal"] == round(1958 * 1.45, -1) and hold["protein_g"] == 160 and hold["training_kcal"] == 0
+    tue = date(2026, 12, 1)
+    easy = nutrition.targets(1958, 160, [run], health="clear", phase_kind="base", deficit_goal=True,
+                             day=tue, plan=plan, ffm_kg=58.3)
+    train = 5 * 1.609344 * 160 / 2.2046
+    assert easy["kcal"] == round(1850 * 1.45 + train - 475, -1) and easy["day_type"] == "easy"
+    assert easy["ea_kcal_per_kg_ffm"] >= 30 and easy["protein_g"] == 160
+    # Outside a block: maintenance. Long and weekend days: never a deficit.
+    later = nutrition.targets(1958, 160, [run], health="clear", phase_kind="base", deficit_goal=True,
+                              day=date(2026, 12, 22), plan=plan, ffm_kg=58.3)
+    assert later["kcal"] == round(1850 * 1.45 + train, -1)
+    long = nutrition.targets(1958, 160, [run | {"distance_mi": 10, "is_long": True}], health="clear",
+                             phase_kind="base", deficit_goal=True, day=tue, plan=plan, ffm_kg=58.3)
+    assert not any("under maintenance" in w for w in long["why"]) and long["day_type"] == "long_run"
+    assert long["carbs_g"] == round(160 / 2.2046 * 7, -1)
+    # The energy-availability floor wins over a deficit that would go too low.
+    deep = nutrition.targets(1958, 160, [], health="clear", phase_kind="base", deficit_goal=True, day=tue,
+                             plan=plan | {"deficit_blocks": [plan["deficit_blocks"][0] | {"kcal": 1500}]},
+                             ffm_kg=58.3)
+    assert deep["ea_kcal_per_kg_ffm"] >= 30 and "raised to the energy-availability floor" in deep["why"]
     assert nutrition.targets(None, 160, [], health="clear", phase_kind="base", deficit_goal=True) is None

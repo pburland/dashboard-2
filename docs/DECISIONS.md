@@ -176,3 +176,20 @@ implemented directly on `cryptography` (RFC 8291/8292) because the usual
 library failed to build here; the round trip is tested by decrypting the
 way a browser does. The "I've been cleared" button records all three exit
 criteria as confirmed by Patrick (his choice) and starts the 21-day return.
+
+## 2026-10-23: Lake Placid season, Felipe's week, research-driven lifting and food
+After Felipe's handoff. Lake Placid (Jul 25 2027) is the A race and 70.3
+Puerto Rico a B-race dress rehearsal; the January marathon is dropped.
+Weekly template from Felipe's: Push Tue / Pull Wed / Legs Thu (bench twice a
+week), long ride Saturday, long run Sunday; weekday training after 4:30 PM
+(no mornings). Two deep-research reports (strength while cutting; nutrition
+and recomposition) are the evidence; short digests live in docs/research and
+go to the coach, the full reports stay out of the public repo. Rules taken
+from them: heavy legs blocked only the day before a long session, upper body
+may share a key day; one heavy top set per lift in every phase, sets fall as
+triathlon hours rise; bench 225 moved to mid-2028 with checkpoints. Weekly
+weights come from logged weight, reps and RPE (app/strength.py) and appear in
+the Sunday report for Patrick to enter in Hevy himself (no API writes yet).
+Food: working RMR 1,850 until a healthy re-test, deficit only on rest/lift/
+easy weekdays inside dated blocks (seed 011), protein 160 g, carbs by day
+type, an energy-availability floor of 30 kcal/kg fat-free mass.

@@ -156,8 +156,12 @@ def build(conn, ws: date, *, replan: bool = True, today: date | None = None) -> 
     text, model = narrative(summary, decision, next_week,
                             SYSTEM.format(**{k: v for k, v in chat.identity(conn).items() if k != "assistant"},
                                           races=chat.races_line(conn)))
+    from app import strength
+    weights = strength.for_week(conn, first)
+    text = f"{text}\n\n{weights.markdown()}"           # computed, not written by the model
     summary["decision"] = decision
     summary["next_week"] = next_week
+    summary["next_weights"] = weights.as_dict()
     summary["next_week_flags"] = plans[0].flags if plans else []
     conn.execute(
         """insert into weekly_summaries (week_start, summary, narrative, model) values (%s, %s::jsonb, %s, %s)

@@ -25,7 +25,7 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-EXCLUDE_PREFIXES = ("db/seed/", "brand/", "share/", "audit/", "preview/")
+EXCLUDE_PREFIXES = ("db/seed/", "brand/", "share/", "audit/", "preview/", "docs/research/")
 EXCLUDE_FILES = {"docs/DECISIONS.md", "docs/AUDIT_BRIEF.md", "docs/AUDIT_PROMPT.md", "docs/BUILD_REPORT_2-5.md",
                  "scripts/make_audit_bundle.py", "scripts/make_share_kit.py"}
 TEXT = {".py", ".sql", ".md", ".js", ".html", ".css", ".json", ".txt", ".ini", ".yml", ".webmanifest", ".example",
@@ -52,8 +52,7 @@ SCRUB = [
     (r"\('2026-09-18', 160\.0, 19\.4, 123\.9, 31\.4, 1\.191, 'dexa',\s*'\{.*?\}'\)",
      "('2026-09-18', 165.0, 18.0, 130.0, 29.7, 1.200, 'dexa', '{}')", re.S),
     (r"DEXA Sep 18: 160 lb, 19\.4% fat \(31\.4 lb fat, 124 lb lean\)\.", "Example DEXA numbers.", 0),
-    (r't\["fuel"\]\["kcal"\] == 2550 and t\["body"\]\["bf_pct"\] == 19\.4',
-     't["fuel"]["kcal"] == 2340 and t["body"]["bf_pct"] == 18.0', 0),
+    (r't\["body"\]\["bf_pct"\] == 19\.4', 't["body"]["bf_pct"] == 18.0', 0),
     # Race history, names, places, ids.
     (r"'\{\"race\":\"Eagleman.*?\}'", "null", re.S),
     (r"Eagleman( 70\.3)?", "the last race", 0),

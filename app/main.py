@@ -376,6 +376,21 @@ def api_reports() -> list:
         return reports.list_reports(conn)
 
 
+@app.get("/api/strength/next", dependencies=[Depends(require_admin)])
+def api_strength_next(week: str | None = Query(default=None, description="Monday, YYYY-MM-DD; default next week")) -> dict:
+    """Recommended lifting weights for a week, from logged Hevy sets and RPE."""
+    from datetime import date as _date, timedelta as _td
+    from app import clock, db, strength
+    if week:
+        ws = _date.fromisoformat(week)
+    else:
+        today = clock.today()
+        ws = today - _td(days=today.weekday()) + _td(days=7)
+    with db.connect() as conn:
+        p = strength.for_week(conn, ws)
+        return p.as_dict() | {"markdown": p.markdown()}
+
+
 @app.post("/admin/report", dependencies=[Depends(require_admin)])
 def admin_report(week: str | None = Query(default=None, description="Monday, YYYY-MM-DD; default last week")) -> dict:
     """Write (or rewrite) a weekly report and re-plan the next 3 weeks."""

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 from datetime import date, timedelta
+from pathlib import Path
 
 from app import clock, db, travel
 from app.health.state import EXIT_CRITERIA, MorningSignals, gate, missing_criteria
@@ -133,8 +134,22 @@ def races_line(conn) -> str:
     return "; ".join(parts) + "."
 
 
+RESEARCH_DIR = Path(__file__).resolve().parent.parent / "docs" / "research"
+
+
+def research_digests() -> str:
+    """The research behind the plan (strength, nutrition), as short digests."""
+    parts = [p.read_text() for p in sorted(RESEARCH_DIR.glob("*_digest.md"))] if RESEARCH_DIR.exists() else []
+    return "\n\n".join(parts)
+
+
 def system_prompt(conn) -> str:
-    return SYSTEM.format(**identity(conn), races=races_line(conn))
+    base = SYSTEM.format(**identity(conn), races=races_line(conn))
+    research = research_digests()
+    if research:
+        base += ("\n\nRESEARCH behind the plan of record (cite it when he asks why; the app's numbers "
+                 "come from these rules):\n" + research)
+    return base
 
 
 # ── context ──────────────────────────────────────────────────────────────
@@ -155,7 +170,12 @@ def context(conn, today: date) -> dict:
     goals = conn.execute("select name, status, due_date, notes from goals").fetchall()
     body = conn.execute("select * from body_metrics order by day desc limit 1").fetchone()
     reps = reports.list_reports(conn, 2)
+    from app import strength
+    monday = today - timedelta(days=today.weekday())
+    weights = {"this_week": strength.for_week(conn, monday).markdown(),
+               "next_week": strength.for_week(conn, monday + timedelta(days=7)).markdown()}
     return {
+        "lifting_weights": weights,
         "now": clock.now().isoformat(timespec="minutes"),
         "where": t.get("where"),
         "health": {"status": g.status.value, "reasons": list(g.reasons),
