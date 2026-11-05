@@ -294,6 +294,7 @@ def test_weekly_report_saves_and_replans(conn_now, monkeypatch):
     assert n > 0 and r["summary"]["next_week"] == []
     # Computed sections follow the narrative: weight check, bench checkpoint, next week's weights.
     assert "**Body weight**" in r["narrative"] and "**Bench**" in r["narrative"]
+    assert "**Dec 20 checkpoint**" in r["narrative"] and r["summary"]["checkpoint"]["rows"]
     assert "Next week's weights" in r["narrative"] and r["summary"]["next_weights"]["days"]
 
 

@@ -156,12 +156,15 @@ def build(conn, ws: date, *, replan: bool = True, today: date | None = None) -> 
     text, model = narrative(summary, decision, next_week,
                             SYSTEM.format(**{k: v for k, v in chat.identity(conn).items() if k != "assistant"},
                                           races=chat.races_line(conn)))
-    from app import bodycomp, strength
+    from app import bodycomp, checkpoints, strength
     weights = strength.for_week(conn, first)
     weigh = bodycomp.check(conn, ws, phase_kind=(plans[0].kind if plans else None))
     bench = strength.bench_checkpoint(strength.for_week(conn, ws), today)
     # Computed lines, not written by the model.
-    text = "\n\n".join(x for x in (text, bodycomp.markdown(weigh), bench, weights.markdown()) if x)
+    cp = checkpoints.check(conn, ws + timedelta(days=6))
+    summary["checkpoint"] = cp
+    text = "\n\n".join(x for x in (text, checkpoints.markdown(cp), bodycomp.markdown(weigh), bench,
+                                    weights.markdown()) if x)
     summary["weight_check"] = weigh
     summary["decision"] = decision
     summary["next_week"] = next_week

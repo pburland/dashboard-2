@@ -15,7 +15,7 @@ from app.analysis.flags import Flag, Severity
 from app.health.state import MorningSignals
 
 MI = 1609.344
-EASY_HR_CAP = 140          # return-phase easy-run average HR cap
+EASY_HR_CAP = 145          # easy-run average HR cap (his pre-mono easy runs averaged ~146; reset from the LTHR test)
 RHR_TOLERANCE = 5          # "within 5 bpm of baseline"
 FEVER_TEMP_C = 0.5
 DEFAULT_START = time(7, 0)

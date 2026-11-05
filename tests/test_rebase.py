@@ -129,11 +129,12 @@ def test_weekend_trip_moves_key_sessions_and_skips_easy_ones(conn):
 
 @needs_db
 def test_missed_easy_session_is_just_skipped(conn):
-    _unmatch(conn, HOME_WS)
-    g.generate(conn, HOME_WS, weeks=1, today=HOME_WS - timedelta(days=1), use_calendar=False)
+    ws = date(2027, 1, 4)              # a Base 3 week with no fitness test (Dec 1's run test is a key session)
+    _unmatch(conn, ws)
+    g.generate(conn, ws, weeks=1, today=ws - timedelta(days=1), use_calendar=False)
     gens = conn.execute("select count(*) n from plan_generations").fetchone()["n"]
-    tue = HOME_WS + timedelta(days=1)
-    easy = [r for r in _live(conn, HOME_WS) if r["plan_date"] == tue and not r["is_key"]]
+    tue = ws + timedelta(days=1)
+    easy = [r for r in _live(conn, ws) if r["plan_date"] == tue and not r["is_key"]]
     assert easy
     rebase.run(conn, tue + timedelta(days=1), use_calendar=False)
     assert conn.execute("select status from planned_workouts where id = %s", (easy[0]["id"],)).fetchone()["status"] == "skipped"

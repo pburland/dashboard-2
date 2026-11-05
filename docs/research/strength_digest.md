@@ -4,6 +4,7 @@ Plan of record for lifting. Evidence vs. inference is marked; the full report is
 
 ## Bottom line
 - Push Tue / Pull Wed / Legs Thu, crossover sets (bench twice a week: heavy Tue, lighter 3 x 8 Thu). Rest 2:30 after heavy compounds, 1:30 after superset rounds.
+- Cleared by his doctor Nov 2 2026 with a normal-size spleen: the no-heavy-straining restriction no longer applies.
 - Re-entry after mono (inference): wk1 ~75% of last working loads at RPE 6-7, wk2 ~85%, wk3 ~92.5%, wk4 ~97.5%, then the weekly rule engine. Legs ramp slowest, no lunges or slow eccentrics for the first 3 weeks.
 - Bench 225 before Lake Placid is unlikely (<1 in 5, judgement). Checkpoints for the smoothed e1RM: >=170 by Nov 24, >=185 by Dec 15, >=195 (stretch 200) by Mar 1, hold >=190 Apr-Jul. Go/no-go Apr 1 2027 only if trend >=215. Then a bench block after the race: ~205 Nov 2027, ~215 Feb-Mar 2028, 225 about mid-2028. 225 x 5 needs a 1RM of ~253-262.
 - Weekly hard sets: re-entry 30 -> 50; Base 45-55; Build 1 28-35; Build 2 20-28; Peak 10-16; race weeks <=6. Keep one heavy top set (3-6 reps, RPE 8, ~80-87% e1RM) per main lift in every phase: intensity, not volume, keeps strength (Spiering 2021; Bickel 2011; Ronnestad 2010).

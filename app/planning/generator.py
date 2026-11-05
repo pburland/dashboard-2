@@ -31,6 +31,7 @@ from datetime import date, timedelta
 from zoneinfo import ZoneInfo
 
 from app import db, travel
+from app.ingest import evaluate
 from app.analysis import overreach
 from app.analysis.flags import Severity
 from app.analysis.validator import History, PlannedSession, validate_week
@@ -41,7 +42,7 @@ from app.planning.briefs import brief
 MI = 1609.344
 EASY_PACE = "10:45-11:30"
 EASY_MIN_PER_MI = 11.0
-HR_CAP, WALK_OVER = 140, 150
+HR_CAP, WALK_OVER = evaluate.EASY_HR_CAP, 155
 MAX_RAMP = 1.10
 LONG_SHARE = 0.33
 # Run long-run caps by phase kind for a 70.3 build (a marathon block would raise build/peak).
@@ -56,7 +57,7 @@ MIN_WEEK_MI = 6.0
 # Sessions a week when the phase template names fewer (a template naming more wins).
 STRENGTH_PER_WEEK = {"prep": 3, "base": 3, "build": 2, "peak": 1, "race": 0, "transition": 1, "return": 3}
 KEY_KINDS = {("run", "long"), ("run", "tempo"), ("run", "race_pace"), ("bike", "long"),
-             ("bike", "threshold"), ("swim", "css")}
+             ("bike", "threshold"), ("swim", "css"), ("run", "test"), ("bike", "test"), ("swim", "test")}
 RELAX_ATTEMPTS = 3
 
 
@@ -427,6 +428,8 @@ def plan_week(conn, ws: date, *, basis_mi: float, factor: float = 1.0, hist: His
     _size_other(drafts, kind, gate_for, weeks_in, recovery, bounds,
                 distance=a_race["distance"] if a_race else None, week_idx=week_idx)
 
+    _apply_events(conn, drafts, ws, today, gate_for)
+
     # Placement: travel, missed key sessions, free time, strength rules, daily cap.
     review: list[str] = []
     drafts = _place(drafts, ws, today, gate_for, cal, stops, missed_keys, review)
@@ -461,6 +464,23 @@ def plan_week(conn, ws: date, *, basis_mi: float, factor: float = 1.0, hist: His
               "calendar": cal.fingerprint(ws, ws + timedelta(days=6)) if cal.available else None}
     return WeekPlan(ws, drafts, target, round(run_mi, 1), flags, not drafts, is_prov, ph_mid.kind,
                     inputs, review)
+
+
+def _apply_events(conn, drafts: list[Draft], ws: date, today: date, gate_for) -> None:
+    """Fixed-date sessions (plan_events, e.g. fitness tests) replace that day's
+    template session of the same sport. Skipped on days the health gate closes
+    or caps at Z2 (a test on a caution day would mislead)."""
+    rows = conn.execute("select * from plan_events where event_date between %s and %s order by event_date",
+                        (ws, ws + timedelta(days=6))).fetchall()
+    for e in rows:
+        d = e["event_date"]
+        g = gate_for(d)
+        if d < today or not g.prescriptions_allowed or g.intensity_ceiling == "Z2":
+            continue
+        for x in [x for x in drafts if x.date == d and x.sport == e["sport"]]:
+            drafts.remove(x)
+        drafts.append(Draft(d, e["sport"], e["kind"], e["title"], zone=e["zone"], duration_min=e["duration_min"],
+                            notes=e["notes"] or None, structure={"gen_key": f"{e['sport']}:{e['kind']}#1"}))
 
 
 def _key_ids(drafts: list[Draft]) -> None:
