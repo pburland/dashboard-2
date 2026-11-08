@@ -351,3 +351,31 @@ def test_old_report_never_plans_into_the_hold_or_the_past(conn_now, monkeypatch)
     reports.build(conn_now, date(2026, 9, 21), today=date(2026, 10, 4))     # a late report
     rows = conn_now.execute("select min(plan_date) d from planned_workouts where source = 'generator'").fetchone()
     assert rows["d"] >= date(2026, 10, 15)          # nothing before expected clearance, nothing in the past
+
+
+@needs_db
+def test_pat_gpt_always_replies_even_after_many_tool_rounds(conn_now, monkeypatch):
+    """"Update my runs" used to end in "(no answer)": the model was still calling tools when
+    the round limit hit. Now a last call without tools asks for a plain reply."""
+    from types import SimpleNamespace as NS
+    from app import chat, llm
+    calls = []
+
+    class Fake:
+        class messages:
+            @staticmethod
+            def create(**kw):
+                calls.append(kw)
+                if kw.get("tool_choice") == {"type": "none"}:
+                    return NS(stop_reason="end_turn", content=[NS(type="text", text="I re-planned both weeks.")])
+                return NS(stop_reason="tool_use", content=[
+                    NS(type="tool_use", id=f"t{len(calls)}", name="get_plan_window",
+                       input={"start": "2026-11-09", "end": "2026-11-15"})])
+
+    monkeypatch.setattr(llm, "client", lambda: Fake)
+    monkeypatch.setattr(llm, "model", lambda: "test-model")
+    monkeypatch.setattr("app.clock.today", lambda: date(2026, 11, 8))
+    r = chat.ask(conn_now, "update my runs for Japan")
+    assert r["reply"] == "I re-planned both weeks."
+    assert len(calls) == chat.MAX_TOOL_ROUNDS + 1 and calls[-1]["messages"][-1]["role"] == "user"
+    assert calls[-1]["messages"][-1]["content"][-1]["type"] == "text"      # the nudge rides on the tool results

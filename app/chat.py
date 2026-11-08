@@ -21,7 +21,7 @@ from app.health.state import EXIT_CRITERIA, MorningSignals, gate, missing_criter
 
 MI = 1609.344
 HISTORY_MESSAGES = 20
-MAX_TOOL_ROUNDS = 4
+MAX_TOOL_ROUNDS = 8
 
 SYSTEM = """You are {assistant}, {name}'s training assistant inside their training app. {name} is \
 {blurb}
@@ -443,7 +443,29 @@ def ask(conn, message: str, conversation_id: int | None = None) -> dict:
             results.append({"type": "tool_result", "tool_use_id": u.id, "content": json.dumps(out, default=str)})
         conn.commit()
         msgs.append({"role": "user", "content": results})
-    reply = llm.text_of(resp) or "(no answer)"
+    reply = llm.text_of(resp)
+    if not reply:
+        # Out of tool rounds, or a turn that ended without words: ask once more for a plain reply.
+        nudge = {"type": "text", "text": "(Reply to Patrick now in plain text: what you did or found, and what "
+                                         "you need from him. No more tools.)"}
+        if resp.stop_reason != "tool_use" and msgs[-1]["role"] == "user":
+            last = msgs[-1]["content"]
+            msgs[-1] = {"role": "user", "content": (last if isinstance(last, list) else
+                                                    [{"type": "text", "text": last}]) + [nudge]}
+        elif resp.stop_reason == "tool_use":
+            msgs[-1] = {"role": "user", "content": list(msgs[-1]["content"]) + [nudge]}
+        try:
+            final = client.messages.create(model=model, max_tokens=1500, system=system, tools=TOOLS,
+                                           tool_choice={"type": "none"}, messages=msgs)
+            reply = llm.text_of(final)
+        except Exception as e:                     # never leave him with nothing
+            reply = ""
+            actions.append({"tool": "final_reply", "error": f"{type(e).__name__}: {e}"[:200]})
+    if not reply:
+        done = [a["tool"] for a in actions if a.get("tool") != "final_reply"]
+        reply = ("I ran " + ", ".join(dict.fromkeys(done)) + " but couldn't write a reply. Ask again, or check "
+                 "the Plan tab for any proposal waiting for your OK.") if done else \
+            "Sorry, I couldn't answer that. Please ask again."
     conn.execute(
         """insert into messages (conversation_id, role, content, context_snapshot, model)
            values (%s, 'assistant', %s, %s::jsonb, %s)""",
