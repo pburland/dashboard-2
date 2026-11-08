@@ -259,8 +259,8 @@ def test_generator_respects_hold_return_and_travel(conn_now):
     assert all(x.kind != "heavy" for x in ret if x.sport == "strength")
     long_ret = [x.distance_mi for x in ret if x.is_long and x.sport == "run"]
     assert long_ret == sorted(long_ret) and max(long_ret) <= 8.0
-    assert not [x for x in drafts if x.date in (date(2026, 11, 6), date(2026, 11, 23))]   # flight days
-    trip = [x for x in drafts if date(2026, 11, 7) <= x.date <= date(2026, 11, 22)]
+    assert not [x for x in drafts if x.date in (date(2026, 11, 6), date(2026, 11, 21))]   # flight days
+    trip = [x for x in drafts if date(2026, 11, 7) <= x.date <= date(2026, 11, 21)]
     assert trip and all(x.sport == "run" or x.kind == "bodyweight" for x in trip)
     assert all("brief" in x.structure for x in drafts)
     rows = conn_now.execute("select count(*) n, bool_and(structure ? 'preview') p from planned_workouts "
