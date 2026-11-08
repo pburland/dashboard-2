@@ -475,12 +475,17 @@ def _apply_events(conn, drafts: list[Draft], ws: date, today: date, gate_for) ->
     for e in rows:
         d = e["event_date"]
         g = gate_for(d)
-        if d < today or not g.prescriptions_allowed or g.intensity_ceiling == "Z2":
+        hard = e["zone"] not in ("Z1", "Z2")
+        if d < today or not g.prescriptions_allowed or (hard and g.intensity_ceiling == "Z2"):
             continue
-        for x in [x for x in drafts if x.date == d and x.sport == e["sport"]]:
-            drafts.remove(x)
-        drafts.append(Draft(d, e["sport"], e["kind"], e["title"], zone=e["zone"], duration_min=e["duration_min"],
-                            notes=e["notes"] or None, structure={"gen_key": f"{e['sport']}:{e['kind']}#1"}))
+        long = e["kind"] == "long"
+        for x in [x for x in drafts if x.sport == e["sport"] and (x.date == d or (long and x.kind == "long"))]:
+            drafts.remove(x)                       # a fixed long run replaces the week's template long run
+        x = Draft(d, e["sport"], e["kind"], e["title"], zone=e["zone"], duration_min=e["duration_min"],
+                  is_long=long, notes=e["notes"] or None, structure={"gen_key": f"{e['sport']}:{e['kind']}#1"})
+        if e["sport"] == "run":
+            x.distance_mi = _round_half(e["duration_min"] / EASY_MIN_PER_MI)
+        drafts.append(x)
 
 
 def _key_ids(drafts: list[Draft]) -> None:
