@@ -193,3 +193,14 @@ the Sunday report for Patrick to enter in Hevy himself (no API writes yet).
 Food: working RMR 1,850 until a healthy re-test, deficit only on rest/lift/
 easy weekdays inside dated blocks (seed 011), protein 160 g, carbs by day
 type, an energy-availability floor of 30 kcal/kg fat-free mass.
+
+## 2026-11-08: planned workouts go to the Garmin calendar
+Patrick wanted his runs on the watch. After each morning sync (and Sunday's
+re-plan) the app makes the Garmin calendar match the plan for the next 14 days:
+one structured workout per run, ride or swim (warm-up, main block, cool-down;
+easy sessions carry an HR range of 125-145 for runs, 110-140 for rides). It
+records every workout it creates (garmin_pushed) and updates or deletes only
+those, so workouts he makes himself are never touched; nothing is sent when
+nothing changed. Uses the same unofficial Garmin login as the sync. Starts
+Nov 23 2026 (the Japan trip runs were put on Garmin by hand). Strength stays in
+Hevy.

@@ -391,6 +391,35 @@ def api_strength_next(week: str | None = Query(default=None, description="Monday
         return p.as_dict() | {"markdown": p.markdown()}
 
 
+@app.get("/api/garmin/push", dependencies=[Depends(require_admin)])
+def api_garmin_push_settings() -> dict:
+    """Whether planned workouts are sent to the Garmin calendar, and what was sent."""
+    from app import db
+    from app.integrations import garmin_push
+    with db.connect() as conn:
+        sent = conn.execute("select plan_date, sport, workout_id from garmin_pushed where plan_date >= current_date "
+                            "order by plan_date").fetchall()
+        return garmin_push.settings(conn) | {"upcoming": sent}
+
+
+@app.post("/api/garmin/push", dependencies=[Depends(require_admin)])
+def api_garmin_push(enabled: bool | None = Body(default=None, embed=True)) -> dict:
+    """Turn sending on or off (optional), then bring the Garmin calendar up to date now."""
+    from psycopg.types.json import Jsonb
+    from app import clock, db
+    from app.integrations import garmin_push
+    with db.connect() as conn:
+        if enabled is not None:
+            cfg = garmin_push.settings(conn) | {"enabled": enabled}
+            conn.execute("update profile set user_prefs = user_prefs || %s where id = 1",
+                         (Jsonb({"garmin_push": cfg}),))
+            conn.commit()
+        try:
+            return {"settings": garmin_push.settings(conn), "result": garmin_push.sync(conn, clock.today())}
+        except Exception as e:
+            raise HTTPException(502, f"Garmin: {type(e).__name__}: {e}"[:300])
+
+
 @app.post("/admin/report", dependencies=[Depends(require_admin)])
 def admin_report(week: str | None = Query(default=None, description="Monday, YYYY-MM-DD; default last week")) -> dict:
     """Write (or rewrite) a weekly report and re-plan the next 3 weeks."""

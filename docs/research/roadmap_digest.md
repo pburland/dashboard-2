@@ -26,3 +26,6 @@ Checkpoints (the weekly report checks them; app/checkpoints.py):
 Heart rate: pre-mono easy runs averaged ~146 at ~10:20/mi (summer); since Oct 19, ~145 at ~11:40/mi (about 10% less
 efficient): lost fitness, not illness. Easy-run cap is 145 average until the Dec 1 LTHR test sets zones; brief
 climbs to 155-160 on hills are fine; minutes above 160 on a flat easy run mean slow down.
+
+Garmin: from Nov 23 2026 the app puts each planned run, ride and swim on his Garmin calendar automatically
+(after the morning sync and Sunday's plan). The Japan trip runs (Nov 11-20) were added by hand.

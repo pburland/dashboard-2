@@ -93,6 +93,12 @@ def _weekly(ws) -> None:
     with db.connect() as conn:
         reports.build(conn, ws)
         notify.report_ready(conn, ws)
+        try:
+            from app import clock
+            from app.integrations import garmin_push
+            log.warning("garmin push after the weekly plan: %s", garmin_push.sync(conn, clock.today()))
+        except Exception:                          # the watch is a convenience; the report is what matters
+            log.exception("garmin push after the weekly plan failed")
 
 
 def tick() -> list[str]:

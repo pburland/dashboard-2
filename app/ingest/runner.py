@@ -99,10 +99,15 @@ def run(kind: str = "manual", days: int = 3, morning: bool = False, only: tuple[
                 from app.ingest import rebase
                 return rebase.run(conn, today)
 
+            def garmin_push():
+                from app.integrations import garmin_push as gp
+                return gp.sync(conn, today)
+
             steps = [("oura", oura), ("baseline", baseline), ("garmin", garmin), ("hevy", hevy),
                      ("evaluate", evaluate_all)]
             if morning:
                 steps.append(("rebase", rebase_week))
+                steps.append(("garmin_push", garmin_push))     # the plan as it now stands -> watch
             for name, fn in steps:
                 if only is None or name in only:
                     _step(summary, name, fn, conn)

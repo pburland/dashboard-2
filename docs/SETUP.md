@@ -111,6 +111,11 @@ To force a sync now: `curl -s -X POST -H "X-Admin-Token: $TOKEN" ".../admin/sync
   routines in the "Ironman 26–27" folder. Log an RPE on every working set
   (turn on RPE tracking in Hevy's workout settings); the weights come from it. When
   Hevy offers to update the routine after a workout, tap No.
+- **Garmin workouts:** planned runs, rides and swims go to your Garmin calendar
+  (and from there to the watch) after each morning sync and Sunday's plan, from
+  Nov 23 2026. Easy sessions carry a heart-rate range. The app only changes or
+  removes workouts it made itself (names start with "TC"). Turn it on or off,
+  or send now, with **Garmin workouts** at the bottom of Today.
 - **Body weight:** log morning weigh-ins in Hevy's body measurements. The
   report compares 7-day averages with the plan and adjusts daily calories in
   175 kcal steps (at most ±400) when you lose too fast or too slow two weeks

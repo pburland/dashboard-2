@@ -525,6 +525,38 @@ $('checkconn').onclick = async () => {
   }
 };
 
+// ── planned workouts on the Garmin calendar ─────────────────────────────
+$('garminbtn').onclick = async () => {
+  const show = html => { $('connresult').innerHTML = `<section class="card"><div class="label">Garmin workouts</div>${html}</section>`; };
+  show('<div class="muted">Loading…</div>');
+  try {
+    const {data} = await api('/api/garmin/push');
+    const on = !!data.enabled;
+    const n = (data.upcoming || []).length;
+    show(`<p>${on ? 'On' : 'Off'}: planned runs, rides and swims ${on ? 'go' : 'would go'} to your Garmin calendar
+      after each morning sync and Sunday's plan${data.from ? `, from ${esc(fmt(data.from, {month: 'short', day: 'numeric'}))}` : ''}.
+      Easy sessions carry a heart-rate range. Workouts you made yourself are never touched.</p>
+      <p class="muted">${n} upcoming workout${n === 1 ? '' : 's'} on Garmin from the app.</p>
+      <button class="primary-btn" id="garmintoggle">${on ? 'Turn off' : 'Turn on'}</button>
+      <button class="ghost-btn" id="garminnow" style="margin-top:8px;width:100%">Send now</button>
+      <div class="n4m" id="garminmsg"></div>`);
+    const run = async body => {
+      $('garminmsg').textContent = 'Talking to Garmin…';
+      try {
+        const r = (await post('/api/garmin/push', body, 120000)).result;
+        $('garminmsg').textContent = r.skipped ? `Not sent: ${r.skipped}.` :
+          `Done: ${r.created} added, ${r.updated} updated, ${r.removed} removed, ${r.unchanged} unchanged` +
+          (r.errors.length ? `. Problems: ${r.errors.join('; ')}` : '.');
+      } catch (e) { $('garminmsg').textContent = e.why || e.message; }
+    };
+    $('garmintoggle').onclick = async () => { await run({enabled: !on}); setTimeout(() => $('garminbtn').onclick(), 1200); };
+    $('garminnow').onclick = () => run({});
+  } catch (e) {
+    if (e.auth) return showSignin('Signed out on this device. Paste your token again.');
+    show(`<div class="muted">${esc(e.why || e.message)}</div>`);
+  }
+};
+
 // ── phone notifications ─────────────────────────────────────────────────
 const NOTIF_TYPES = [['workout', 'Tomorrow\'s workout (8:30 PM)'], ['checkin', '"How was it?" after a session'],
   ['safety', 'Safety (readiness, heart rate, heat)'], ['plan', 'Plan changes and changes to confirm'],
