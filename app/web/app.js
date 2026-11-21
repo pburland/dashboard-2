@@ -671,6 +671,12 @@ async function start() {
     renderToday(data, cached);
     if (qs.get('tab')) document.querySelector(`.tabs button[data-tab="${qs.get('tab')}"]`)?.click();
     if (why) $('sync').textContent = `${why}. ` + $('sync').textContent;
+    if (cached) {
+      // Make an old copy impossible to miss: the date at the top would otherwise look current.
+      const when = new Date(cached).toLocaleString([], {weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'});
+      $('today').insertAdjacentHTML('afterbegin', `<div class="banner" id="stale">Showing a saved copy from ${esc(when)}: `
+        + `couldn't reach the server (${esc(why || 'no connection')}). Tap ↻ at the top to try again.</div>`);
+    }
     else if (lastLoadMs != null) $('sync').textContent += ` · loaded in ${(lastLoadMs / 1000).toFixed(1)}s`;
   } catch (e) {
     if (e.auth) return showSignin('');
