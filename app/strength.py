@@ -27,12 +27,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, timedelta
+from app import rules
 
 ALPHA, ALPHA_NOISY, NOISE = 0.3, 0.15, 0.05
-BACKOFF = 0.90
-CUT_CAP_LB = 5.0
-REENTRY = (0.75, 0.85, 0.925, 0.975)
-GAP_DAYS = 21
+BACKOFF = rules.value("strength_backoff")
+CUT_CAP_LB = rules.value("strength_cut_cap_lb")
+REENTRY = rules.value("strength_reentry")
+GAP_DAYS = rules.value("strength_gap_days")
 # Bench e1RM checkpoints (strength report, Oct 2026): date -> smoothed trend to reach.
 # Fallback only; the checkpoints of record live in goals.target (seed 020).
 BENCH_CHECKPOINTS = [(date(2026, 12, 31), 160), (date(2027, 3, 1), 175), (date(2027, 5, 1), 180),

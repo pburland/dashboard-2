@@ -14,14 +14,11 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from app.analysis.flags import Flag, Severity
+from app import rules
 
 # (caution at or above, no-go at or above), heat index °F
-THRESHOLDS = {
-    "easy": (85.0, 95.0),
-    "quality": (80.0, 88.0),
-    "long": (78.0, 85.0),
-}
-HEAT_ILLNESS_OFFSET_F = 5.0   # thresholds drop by this much after a heat illness
+THRESHOLDS = rules.value("heat_index_thresholds")
+HEAT_ILLNESS_OFFSET_F = rules.value("heat_illness_offset_f")   # thresholds drop by this much after a heat illness
 EARLIEST_START_HOUR = 5
 
 

@@ -7,26 +7,11 @@ says so. Nothing here invents zones from age or a max-HR formula.
 """
 from __future__ import annotations
 
-# (zone, low %, high %) of LTHR. High bound exclusive except the last zone.
-RUN_ZONES = (
-    ("Z1", 0.00, 0.85),
-    ("Z2", 0.85, 0.90),
-    ("Z3", 0.90, 0.95),
-    ("Z4", 0.95, 1.00),
-    ("Z5a", 1.00, 1.03),
-    ("Z5b", 1.03, 1.07),
-    ("Z5c", 1.07, 2.00),
-)
+from app import rules
 
-BIKE_ZONES = (
-    ("Z1", 0.00, 0.81),
-    ("Z2", 0.81, 0.90),
-    ("Z3", 0.90, 0.94),
-    ("Z4", 0.94, 1.00),
-    ("Z5a", 1.00, 1.03),
-    ("Z5b", 1.03, 1.07),
-    ("Z5c", 1.07, 2.00),
-)
+# (zone, low %, high %) of LTHR. High bound exclusive except the last zone.
+RUN_ZONES = rules.value("run_hr_zones")
+BIKE_ZONES = rules.value("bike_hr_zones")
 
 ZONE_ORDER = [z for z, _, _ in RUN_ZONES]
 

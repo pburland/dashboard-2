@@ -13,8 +13,9 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from app.analysis.flags import Flag, Severity
+from app import rules
 
-CAUTION_DAYS = 2           # the check-in day plus the next two
+CAUTION_DAYS = rules.value("checkin_caution_days")   # the check-in day plus the next two
 RPE_MISMATCH = 8
 EASY_ZONES = (None, "Z1", "Z2")
 RECURRING_WINDOW = 7

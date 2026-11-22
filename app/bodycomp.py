@@ -17,10 +17,11 @@ from datetime import date, timedelta
 from statistics import mean
 
 from psycopg.types.json import Jsonb
+from app import rules
 
 LB_PER_KG = 2.20462
-STEP_KCAL = 175
-MAX_ADJUST = 400
+STEP_KCAL = rules.value("weight_step_kcal")
+MAX_ADJUST = rules.value("weight_max_adjust_kcal")
 TOL_KG = 0.15
 
 

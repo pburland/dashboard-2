@@ -16,8 +16,9 @@ from app.analysis.flags import Flag, Severity
 from app.analysis.load import estimate_planned_load, session_share
 from app.health.state import RETURN_LONG_RUN_CAP, Gate, Status
 from app.periodization.zones import at_or_below
+from app import rules
 
-LEGS_BEFORE_LONG_DAYS = 1      # heavy legs no closer than 2 days before a long run or ride
+LEGS_BEFORE_LONG_DAYS = rules.value("legs_before_long_days")      # heavy legs no closer than 2 days before a long run or ride
 
 
 @dataclass(frozen=True)

@@ -38,19 +38,20 @@ from app.analysis.validator import History, PlannedSession, validate_week
 from app.health.state import RETURN_LONG_RUN_CAP, MorningSignals, Status, gate, provisional, return_volume
 from app.periodization.phases import NoPhaseDefined, phase_for
 from app.planning.briefs import brief
+from app import rules
 
 MI = 1609.344
 EASY_PACE = "10:45-11:30"
 EASY_MIN_PER_MI = 11.0
-HR_CAP, WALK_OVER = evaluate.EASY_HR_CAP, 155
-MAX_RAMP = 1.10
-LONG_SHARE = 0.33
+HR_CAP, WALK_OVER = evaluate.EASY_HR_CAP, rules.value("easy_hr_walk")
+MAX_RAMP = 1 + rules.value("weekly_ramp_max")
+LONG_SHARE = rules.value("long_run_share")
 # Run long-run caps by phase kind for a 70.3 build (a marathon block would raise build/peak).
 LONG_CAP_MI = {"base": 12.0, "build": 15.0, "peak": 16.0, "race": 8.0, "return": 8.0, "transition": 3.0}
 # Longest run worth doing before a race, by distance (conservative).
 PEAK_LONG_MI = {"70.3": 12.5, "140.6": 16.0, "marathon": 20.0, "half": 12.0}
-RECOVERY_EVERY = 4            # 3 weeks building, 1 lighter (Friel)
-RECOVERY_FACTOR = 0.8
+RECOVERY_EVERY = rules.value("recovery_every_weeks")            # 3 weeks building, 1 lighter (Friel)
+RECOVERY_FACTOR = rules.value("recovery_week_factor")
 PHASE_FACTOR = {"race": 0.7, "transition": 0.3}
 PREVIEW_FACTOR = 1.08         # previews assume the week goes to plan
 MIN_WEEK_MI = 6.0

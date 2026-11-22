@@ -14,16 +14,17 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 
 from app.analysis.flags import Flag, Severity
+from app import rules
 
-LONG_RUN_JUMP_WARN = 0.10
-LONG_RUN_JUMP_STOP = 0.20
+LONG_RUN_JUMP_WARN = rules.value("long_run_jump_warn")
+LONG_RUN_JUMP_STOP = rules.value("long_run_jump_stop")
 LONG_RUN_WINDOW_DAYS = 28
-SESSION_SHARE_WARN = 0.35
-SESSION_SHARE_STOP = 0.45
-DECOUPLING_WARN = 0.05
-DECOUPLING_STOP = 0.08
+SESSION_SHARE_WARN = rules.value("session_share_warn")
+SESSION_SHARE_STOP = rules.value("session_share_stop")
+DECOUPLING_WARN = rules.value("decoupling_warn")
+DECOUPLING_STOP = rules.value("decoupling_stop")
 EASY_PACE_TOLERANCE_S = 10
-WEEKLY_RAMP_WARN = 0.10
+WEEKLY_RAMP_WARN = rules.value("weekly_ramp_max")
 # On a short base a percentage is meaningless (2 -> 3 mi is +50%): growth of
 # up to this many miles is never flagged.
 LONG_RUN_JUMP_FREE_MI = 1.0

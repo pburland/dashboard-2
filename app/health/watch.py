@@ -24,18 +24,19 @@ import statistics
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
+from app import rules
 
-RHR_RISE = 5
+RHR_RISE = rules.value("watch_rhr_rise")
 RHR_DAYS = 3
-DECOUPLING = 0.05
+DECOUPLING = rules.value("watch_decoupling")
 DECOUPLING_RUNS = 2
 DECOUPLING_MIN_S = 30 * 60
 HRV_BASELINE_DAYS = 60
 HRV_MIN_NIGHTS = 21
-HRV_SD = 0.5
+HRV_SD = rules.value("watch_hrv_sd")
 HRV_DAYS = 2
 WINDOW_DAYS = 7
-CAUTION_SIGNALS = 2
+CAUTION_SIGNALS = rules.value("watch_signals_for_caution")
 CAUTION_DAYS = 2           # the trigger day and the next
 TRAVEL_TZ_HOURS = 5
 TRAVEL_GRACE_DAYS = 3

@@ -19,16 +19,16 @@ swim ~600 kcal/h, lifting ~6 kcal/min. Rough; the 7-day weight trend corrects.
 from __future__ import annotations
 
 from datetime import date
+from app import rules
 
 NEAT_FACTOR = 1.45
 KM_PER_MI = 1.609344
 KCAL_PER_KG_PER_KM = 1.0           # running, gross (net ~0.95)
 KCAL_PER_MIN = {"bike": 10.0, "swim": 10.0, "strength": 6.0, "walk": 4.0}
 HARD_ZONES = ("Z3", "Z4", "Z5a", "Z5b", "Z5c")
-EA_DEFICIT_FLOOR = 30              # kcal per kg fat-free mass, on a deficit day
-EA_HARD_FLOOR = 25                 # never plan below this
-CARBS_G_PER_KG = {"rest": 3.5, "lift": 3.75, "easy": 4.5, "lift_easy": 5.0, "key": 6.0,
-                  "long_run": 7.0, "long_ride": 9.0}
+EA_DEFICIT_FLOOR = rules.value("ea_deficit_floor")              # kcal per kg fat-free mass, on a deficit day
+EA_HARD_FLOOR = rules.value("ea_hard_floor")                 # never plan below this
+CARBS_G_PER_KG = rules.value("carbs_g_per_kg")
 FAT_MIN_G = 65
 
 

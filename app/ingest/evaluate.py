@@ -13,9 +13,10 @@ from datetime import date, datetime, time, timedelta
 from app.analysis import heat, overreach
 from app.analysis.flags import Flag, Severity
 from app.health.state import MorningSignals
+from app import rules
 
 MI = 1609.344
-EASY_HR_CAP = 145          # easy-run average HR cap (his pre-mono easy runs averaged ~146; reset from the LTHR test)
+EASY_HR_CAP = rules.value("easy_hr_cap")   # provisional until the LTHR test sets Z2
 RHR_TOLERANCE = 5          # "within 5 bpm of baseline"
 FEVER_TEMP_C = 0.5
 DEFAULT_START = time(7, 0)

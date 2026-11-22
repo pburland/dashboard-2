@@ -23,6 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from enum import Enum
+from app import rules
 
 
 class Status(str, Enum):
@@ -39,11 +40,11 @@ EXIT_CRITERIA: dict[str, str] = {
     "rhr_near_baseline_3d": "Resting HR within 5 bpm of pre-illness baseline for 3 consecutive days",
 }
 
-RETURN_MIN_DAYS = 7
-RETURN_MAX_DAYS = 21
-RETURN_START_VOLUME = 0.5
-RETURN_END_VOLUME = 0.9
-RETURN_LONG_RUN_CAP = 0.7   # fraction of the pre-hold longest run
+RETURN_MIN_DAYS = rules.value("return_min_days")
+RETURN_MAX_DAYS = rules.value("return_max_days")
+RETURN_START_VOLUME = rules.value("return_start_volume")
+RETURN_END_VOLUME = rules.value("return_end_volume")
+RETURN_LONG_RUN_CAP = rules.value("return_long_run_cap")   # fraction of the pre-hold longest run
 
 
 @dataclass(frozen=True)
@@ -90,12 +91,13 @@ class HoldExitRefused(RuntimeError):
 
 def caution_reasons(s: MorningSignals) -> list[str]:
     reasons = []
-    if s.readiness is not None and s.readiness < 70:
-        reasons.append(f"Oura readiness {s.readiness} (<70)")
+    low = rules.value("caution_readiness_below")
+    if s.readiness is not None and s.readiness < low:
+        reasons.append(f"Oura readiness {s.readiness} (<{low})")
     if (s.resting_hr is not None and s.resting_hr_baseline is not None
-            and s.resting_hr >= s.resting_hr_baseline + 5):
-        reasons.append(f"resting HR {s.resting_hr} vs baseline {s.resting_hr_baseline} (+5 or more)")
-    if s.temp_deviation_c is not None and s.temp_deviation_c >= 0.5:
+            and s.resting_hr >= s.resting_hr_baseline + rules.value("caution_rhr_rise")):
+        reasons.append(f"resting HR {s.resting_hr} vs baseline {s.resting_hr_baseline} (+{rules.value('caution_rhr_rise')} or more)")
+    if s.temp_deviation_c is not None and s.temp_deviation_c >= rules.value("caution_temp_c"):
         reasons.append(f"body temperature +{s.temp_deviation_c:.1f}°C vs baseline — possible illness, log it if you feel unwell")
     if s.checkin_reason:
         reasons.append(s.checkin_reason)

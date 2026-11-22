@@ -145,6 +145,8 @@ def research_digests() -> str:
 
 def system_prompt(conn) -> str:
     base = SYSTEM.format(**identity(conn), races=races_line(conn))
+    from app import rules
+    base += "\n\n" + rules.render()
     research = research_digests()
     if research:
         base += ("\n\nRESEARCH behind the plan of record (cite it when he asks why; the app's numbers "
