@@ -296,7 +296,7 @@ function fuelCard(f, b) {
   if (!f) return '';
   const n = x => Number(x).toLocaleString('en-US');
   const scan = b && b.composition_day ? ` (DEXA ${fmt(b.composition_day, {month: 'short', day: 'numeric'})})` : '';
-  const body = b ? `<div class="n4m" style="margin-top:8px">${b.source === 'dexa' ? 'DEXA' : 'Weight'} ${fmt(b.day, {month: 'short', day: 'numeric'})}: ${esc(b.weight_lb)} lb${b.bf_pct != null ? ` · ${esc(b.bf_pct)}% fat` : ''}${b.lean_lb != null ? ` · ${Math.round(b.lean_lb)} lb lean` : ''}${scan}</div>` : '';
+  const body = b ? `<div class="n4m" style="margin-top:8px">${b.source === 'dexa' ? 'DEXA' : 'Weight'} ${fmt(b.day, {month: 'short', day: 'numeric'})}: ${esc(Number(b.weight_lb).toFixed(1))} lb${b.bf_pct != null ? ` · ${esc(Number(b.bf_pct).toFixed(1))}% fat` : ''}${b.lean_lb != null ? ` · ${Math.round(b.lean_lb)} lb lean` : ''}${scan}</div>` : '';
   const day = {rest: 'Rest day', lift: 'Lifting day', easy: 'Easy day', lift_easy: 'Lift + easy day', key: 'Key session day',
                long_run: 'Long run day', long_ride: 'Long ride day'}[f.day_type];
   return `<section class="card"><div class="label">Fuel today</div>
@@ -325,12 +325,23 @@ document.addEventListener('click', async e => {
   catch (err) { $('zonemsg').textContent = err.why || err.message; }
 });
 
+// One status light with one plain reason (outside review): the detail lives in the report.
 function statusLine(h, phase) {
-  const cls = {clear: 'blue', caution: 'warn', hold: 'stop', return: 'ok'}[h.status];
-  const label = {clear: phase.name || 'Training', caution: 'Caution today', hold: 'Health hold', return: 'Return to training'}[h.status];
+  const color = {clear: 'var(--green)', caution: 'var(--orange)', hold: 'var(--red)', return: 'var(--blue)'}[h.status];
+  const extra = h.reasons.filter(r => !r.startsWith('return to training') && !r.startsWith('long run capped'));
+  let label, why;
+  if (h.status === 'return' && h.comeback) {
+    const c = h.comeback;
+    label = `Comeback · day ${c.day} of ${c.days}`;
+    why = extra[0] || `Easy effort only · ${c.volume_pct}% volume · ends ${fmt(c.ends, {month: 'short', day: 'numeric'})}`;
+  } else {
+    label = {clear: 'Clear to train', caution: 'Take it easy today', hold: 'Health hold', return: 'Comeback'}[h.status];
+    why = h.status === 'clear' ? (phase.name ? `${phase.name}: train as planned` : 'Train as planned') : (extra[0] || h.reasons[0] || '');
+  }
   const watch = h.reasons.some(r => r.startsWith('Easing off')) ? [] : (h.watch || []);
-  return `<div class="statusline"><span class="pill ${cls}">● ${esc(label)}</span><span class="muted">${esc(h.reasons[0] || '')}</span></div>` +
-    watch.map(w => `<div class="n4m" style="margin:4px 0 8px">${esc(w)}</div>`).join('');
+  return `<section class="card light" id="statuslight"><span class="lamp" style="background:${color}" aria-hidden="true"></span>
+    <div><div class="light-label">${esc(label)}</div><div class="light-why">${esc(why[0] ? why[0].toUpperCase() + why.slice(1) : '')}</div>
+    ${watch.length ? `<div class="light-watch">${esc(watch[0])}</div>` : ''}</div></section>`;
 }
 
 function renderToday(t, cached) {
@@ -364,7 +375,8 @@ function renderToday(t, cached) {
   todayHtml += `<section class="card"><div class="label">Next 4 days</div>${n4}${t.timing_note ? `<div class="n4m" style="margin-top:8px">Best times without: ${esc(t.timing_note)}</div>` : ''}</section>`;
   todayHtml += fuelCard(t.fuel, t.body);
   todayHtml += zonesCard(t.zones);
-  todayHtml += gateCard(t.long_run_gate) + readinessCard(t.readiness) + recentCard(t.recent_activities);
+  todayHtml += gateCard(t.long_run_gate) + recentCard(t.recent_activities);
+  if (t.readiness) todayHtml += `<details class="details-card"><summary>Recovery numbers</summary>${readinessCard(t.readiness)}</details>`;
   $('today').innerHTML = todayHtml;
   wireCheckin(); wireProposals($('today')); wireClearance();
   if ($('clearopen')) $('clearopen').onclick = () => { $('clearopen').outerHTML = clearanceForm(); wireClearance(); };
@@ -373,7 +385,9 @@ function renderToday(t, cached) {
 }
 
 // ── plan ────────────────────────────────────────────────────────────────
+let planView = 'weeks';
 async function renderPlan() {
+  if (planView === 'season') return renderSeason();
   try {
     const {data} = await api('/api/plan?days=28');
     const todayIso = $('hdrdate').dataset.iso;
@@ -401,14 +415,142 @@ async function renderPlan() {
           <div class="n4t">${esc(s.title)}${tag}${act}</div><div class="n4m">${kname}${meta ? ' · ' + meta : ''}${bt}</div></summary>${more}</details></div></div>`;
       }).join('') || '<div class="n4m">Rest</div>'}</div></div>`;
     });
-    $('plan').innerHTML = `<section class="card"><div class="label">Next 4 weeks · tap a workout for its brief</div>${html}
+    $('plan').innerHTML = planToggle() + `<section class="card"><div class="label">Next 4 weeks · tap a workout for its brief</div>${html}
       ${data.timing_note ? `<div class="n4m" style="margin-top:10px">Best times without: ${esc(data.timing_note)}</div>` : ''}</section>`;
+    wirePlanToggle();
     $('plan').querySelectorAll('[data-undo]').forEach(b => b.onclick = async ev => {
       ev.preventDefault(); b.disabled = true;
       try { await post(`/api/plan/undo/${b.dataset.undo}`, {}, 15000); renderPlan(); }
       catch (e) { b.textContent = e.message; }
     });
   } catch (e) { if (e.auth) return showSignin('Signed out on this device. Paste your token again.'); $('plan').innerHTML = errorCard('Plan', e.why || e.message); }
+}
+
+function planToggle() {
+  return `<div class="seg" role="tablist"><button data-view="weeks" aria-selected="${planView === 'weeks'}">Next 4 weeks</button>
+    <button data-view="season" aria-selected="${planView === 'season'}">Season</button></div>`;
+}
+function wirePlanToggle() {
+  $('plan').querySelectorAll('[data-view]').forEach(b => b.onclick = () => { planView = b.dataset.view; renderPlan(); });
+}
+
+// The season on one page: phases as a strip, then everything dated in order.
+async function renderSeason() {
+  try {
+    const {data} = await api('/api/season');
+    const day = d => fmt(d, {month: 'short', day: 'numeric'});
+    const ph = data.phases, t0 = Date.parse(ph[0]?.start_date || data.today), t1 = Date.parse(ph.at(-1)?.end_date || data.today);
+    const span = Math.max(1, t1 - t0);
+    const kindColor = {prep: 'var(--muted)', return: 'var(--muted)', base: 'var(--blue)', build: 'var(--orange)',
+                       peak: 'var(--red)', race: 'var(--red)', transition: 'var(--card2)'};
+    const strip = ph.map(p => {
+      const w = 100 * (Date.parse(p.end_date) - Date.parse(p.start_date) + 864e5) / (span + 864e5);
+      return `<div class="seg-ph" style="width:${w.toFixed(2)}%;background:${kindColor[p.kind] || 'var(--card2)'}"
+        title="${esc(p.name)}: ${day(p.start_date)}–${day(p.end_date)}"></div>`;
+    }).join('');
+    const nowPct = 100 * (Date.parse(data.today) - t0) / span;
+    const items = [];
+    ph.forEach(p => items.push([p.start_date, '▸', `${p.name} starts`, `until ${day(p.end_date)}`]));
+    data.races.forEach(r => items.push([r.race_date, '🏁', r.name, `${r.distance} · goal #${r.priority}${r.status === 'uncertain' ? ' · undecided' : ''}`]));
+    data.events.forEach(e => items.push([e.event_date, e.kind === 'test' ? '⏱' : '★', e.title, '']));
+    if (data.return) items.push([data.return.end, '✓', 'Comeback ends', 'normal training from the next day']);
+    data.checkpoints.forEach(c => items.push([c.date, '◆', c.name, '']));
+    data.deficit_blocks.forEach(b => items.push([b.from, '🍽', `Calorie deficit: ${b.name}`, `to ${day(b.to)} · ${b.kcal} kcal under on easy days`]));
+    data.lift_checkpoints.forEach(l => items.push([l.date, '🏋️', `${l.lift} checkpoint: ${l.lb} lb`, '']));
+    items.sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+    let month = '';
+    const list = items.map(([d, icon, title, sub]) => {
+      const m = fmt(d, {month: 'long', year: 'numeric'});
+      const head = m !== month ? `<div class="weekhdr">${esc(m)}</div>` : '';
+      month = m;
+      return `${head}<div class="season-row${d < data.today ? ' past' : ''}"><span class="season-d">${esc(day(d))}</span>
+        <span class="season-i" aria-hidden="true">${icon}</span><div><div>${esc(title)}</div>${sub ? `<div class="muted">${esc(sub)}</div>` : ''}</div></div>`;
+    }).join('');
+    $('plan').innerHTML = planToggle() + `<section class="card"><div class="label">Season</div>
+      <div class="strip">${strip}<div class="strip-now" style="left:${Math.min(100, Math.max(0, nowPct)).toFixed(1)}%" title="Today"></div></div>
+      <div class="legend" style="margin:8px 0 4px"><span><i style="background:var(--muted)"></i>Comeback / prep</span><span><i style="background:var(--blue)"></i>Base</span>
+        <span><i style="background:var(--orange)"></i>Build</span><span><i style="background:var(--red)"></i>Peak / race</span></div>
+      <div class="n4m">${esc(data.undecided)}</div></section>
+      <section class="card">${list || '<div class="n4m">Nothing scheduled yet.</div>'}</section>`;
+    wirePlanToggle();
+  } catch (e) { if (e.auth) return showSignin('Signed out on this device. Paste your token again.'); $('plan').innerHTML = errorCard('Season', e.why || e.message); }
+}
+
+// ── line charts for Trends (one y-axis; thin 2px lines; hover titles on points) ──
+function lineChart({series, yfmt = v => v, invert = false, H = 160, xs}) {
+  const W = 380, L = 40, R = 46, T = 10, B = 22;
+  const all = series.flatMap(s => s.pts.map(p => p.y));
+  if (!all.length) return '';
+  let lo = Math.min(...all), hi = Math.max(...all);
+  if (hi - lo < 1e-9) { lo -= 1; hi += 1; }
+  const pad = (hi - lo) * 0.12; lo -= pad; hi += pad;
+  const x0 = Date.parse(xs[0]), x1 = Math.max(x0 + 864e5, Date.parse(xs.at(-1)));
+  const px = d => L + (W - L - R) * (Date.parse(d) - x0) / (x1 - x0);
+  const py = v => { const f = (v - lo) / (hi - lo); return T + (H - T - B) * (invert ? f : 1 - f); };
+  let g = '';
+  for (let i = 0; i <= 3; i++) {
+    const v = lo + (hi - lo) * i / 3;
+    g += `<line x1="${L}" x2="${W - R}" y1="${py(v)}" y2="${py(v)}" stroke="#2c2c2e"/><text x="${L - 6}" y="${py(v) + 4}" fill="#86868b" font-size="10" text-anchor="end">${esc(yfmt(v))}</text>`;
+  }
+  [xs[0], xs[Math.floor(xs.length / 2)], xs.at(-1)].forEach((d, i) =>
+    g += `<text x="${px(d)}" y="${H - 6}" fill="#86868b" font-size="10" text-anchor="${['start', 'middle', 'end'][i]}">${esc(fmt(d, {month: 'short', day: 'numeric'}))}</text>`);
+  series.forEach(s => {
+    if (s.dots) s.pts.forEach(p => g += `<circle cx="${px(p.x).toFixed(1)}" cy="${py(p.y).toFixed(1)}" r="3" fill="${s.color}" opacity=".45"><title>${esc(p.label)}</title></circle>`);
+    if (s.line && s.pts.length > 1) {
+      g += `<polyline points="${s.pts.map(p => `${px(p.x).toFixed(1)},${py(p.y).toFixed(1)}`).join(' ')}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round"/>`;
+      s.pts.forEach(p => g += `<circle cx="${px(p.x).toFixed(1)}" cy="${py(p.y).toFixed(1)}" r="9" fill="transparent"><title>${esc(p.label)}</title></circle>`);
+      const last = s.pts.at(-1);
+      if (s.name) g += `<text x="${px(last.x) + 6}" y="${py(last.y) + 4}" fill="#aeaeb2" font-size="10">${esc(s.name)}</text>`;
+    }
+  });
+  return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(series.map(s => s.name || '').join(', '))}">${g}</svg></div>`;
+}
+
+const pace = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+
+function loadCard(ld) {
+  const d = ld.days;
+  if (!d.length || !d.some(x => x.fitness > 0)) return '<section class="card"><div class="label">Fitness and fatigue</div><p class="muted">Not enough workouts with heart rate yet.</p></section>';
+  const xs = d.map(x => x.day), now = d.at(-1), then = d[Math.max(0, d.length - 29)];
+  const chart = lineChart({xs, series: [
+    {name: 'Fitness', color: '#0a84ff', line: true, pts: d.map(x => ({x: x.day, y: x.fitness, label: `${fmt(x.day, {month: 'short', day: 'numeric'})}: fitness ${x.fitness}`}))},
+    {name: 'Fatigue', color: '#c86e08', line: true, pts: d.map(x => ({x: x.day, y: x.fatigue, label: `${fmt(x.day, {month: 'short', day: 'numeric'})}: fatigue ${x.fatigue}`}))}],
+    yfmt: v => Math.round(v)});
+  const df = now.fitness - then.fitness;
+  const form = now.form > 5 ? 'fresh' : now.form < -10 ? 'carrying fatigue' : 'normal training load';
+  return `<section class="card"><div class="label">Fitness and fatigue</div>
+    <div class="row"><div class="stat"><div class="v">${now.form > 0 ? '+' : ''}${Math.round(now.form)}</div><div class="n">form today (fitness − fatigue): ${form}</div></div></div>
+    ${chart}<div class="legend" style="margin-top:6px"><span><i style="background:#0a84ff"></i>Fitness (6-week average)</span><span><i style="background:#c86e08"></i>Fatigue (1-week average)</span></div>
+    <div class="n4m">Fitness is ${df >= 0 ? 'up' : 'down'} ${Math.abs(df).toFixed(1)} over 4 weeks. Interpret with caution: built from heart-rate load (swims without HR count as zero) until per-sport scores are added.</div></section>`;
+}
+
+function weightCard(w) {
+  const d = w.days;
+  if (d.length < 2) return '<section class="card"><div class="label">Body weight · 7-day average</div><p class="muted">Log morning weigh-ins in Hevy (Body measurements) to see the trend.</p></section>';
+  const xs = d.map(x => x.day), now = d.at(-1), then = d[Math.max(0, d.length - 15)];
+  const perWk = (now.avg7 - then.avg7) / Math.max(1, (Date.parse(now.day) - Date.parse(then.day)) / 6048e5);
+  const chart = lineChart({xs, series: [
+    {color: '#0a84ff', dots: true, pts: d.filter(x => x.weighed != null).map(x => ({x: x.day, y: x.weighed, label: `${fmt(x.day, {month: 'short', day: 'numeric'})}: ${x.weighed} lb`}))},
+    {color: '#0a84ff', line: true, pts: d.map(x => ({x: x.day, y: x.avg7, label: `${fmt(x.day, {month: 'short', day: 'numeric'})}: 7-day average ${x.avg7} lb`}))}],
+    yfmt: v => v.toFixed(1)});
+  return `<section class="card"><div class="label">Body weight · 7-day average</div>
+    <div class="row"><div class="stat"><div class="v">${now.avg7}<small> lb</small></div><div class="n">${perWk <= 0 ? 'down' : 'up'} ${Math.abs(perWk).toFixed(1)} lb a week over 2 weeks</div></div></div>
+    ${chart}<div class="n4m">Dots are weigh-ins, the line is the 7-day average. In a deficit block the target is losing about 0.4–0.8 lb a week; faster than that, the app eases the deficit.</div></section>`;
+}
+
+function efficiencyCard(e) {
+  const r = e.runs;
+  if (r.length < 2) return `<section class="card"><div class="label">Running pace at ${e.hr} bpm</div><p class="muted">Needs a few flat, easy runs of 20+ minutes with heart rate.</p></section>`;
+  const xs = r.map(x => x.day), now = r.at(-1), then = r.find(x => Date.parse(x.day) >= Date.parse(now.day) - 28 * 864e5) || r[0];
+  const chart = lineChart({xs, invert: true, series: [
+    {color: '#0a84ff', dots: true, pts: r.map(x => ({x: x.day, y: x.pace_s, label: `${fmt(x.day, {month: 'short', day: 'numeric'})}: ${pace(x.pace_s)}/mi at ${e.hr} bpm`}))},
+    {color: '#0a84ff', line: true, pts: r.map(x => ({x: x.day, y: x.rolling_pace_s, label: `${fmt(x.day, {month: 'short', day: 'numeric'})}: 4-week average ${pace(x.rolling_pace_s)}/mi`}))}],
+    yfmt: v => pace(v)});
+  const diff = then.rolling_pace_s - now.rolling_pace_s;
+  const verdict = Math.abs(diff) < 5 ? 'holding steady' : diff > 0 ? `${diff} s/mi faster than 4 weeks ago: aerobic fitness improving` : `${-diff} s/mi slower than 4 weeks ago: fatigue, heat or lost fitness`;
+  return `<section class="card"><div class="label">Running pace at ${e.hr} bpm · higher is faster</div>
+    <div class="row"><div class="stat"><div class="v">${pace(now.rolling_pace_s)}<small> /mi</small></div><div class="n">${esc(verdict)}</div></div></div>
+    ${chart}<div class="n4m">Flat, easy runs only (under 15 m of climbing per mile). Dots are single runs; the line is the 4-week average. Interpret with caution.</div></section>`;
 }
 
 // ── reports ─────────────────────────────────────────────────────────────
@@ -517,13 +659,13 @@ async function renderTrends() {
         <polyline points="${pts}" fill="none" stroke="#ff9f0a" stroke-width="2"/></svg></div>
         <div class="n4m">Latest: ${rp.at(-1).rpe7} (7-day average). Easy weeks should sit around 3-5.</div>`;
     }
-    $('trends').innerHTML = `<section class="card"><div class="label">Weekly run miles</div>
+    $('trends').innerHTML = loadCard(data.load) + weightCard(data.weight) + efficiencyCard(data.efficiency) + `<section class="card"><div class="label">Weekly run miles</div>
       <div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Weekly run miles">${g}</svg></div>
       <div class="legend" style="margin-top:8px"><span><i style="background:var(--blue)"></i>Actual</span><span><i style="background:var(--teal);height:2px;vertical-align:3px"></i>Planned</span></div></section>
       <section class="card"><div class="label">How hard it felt · 7-day average RPE</div>${rpeSvg}</section>
       <section class="card"><div class="label">Bench press · estimated 1RM</div>${last ? `
       <div class="row"><div class="stat"><div class="v">${Math.round(last.e1rm)}<small> lb</small></div><div class="n">${fmt(last.day, {month: 'short', day: 'numeric'})} · top set ${last.top} lb</div></div>
-      <div style="text-align:right"><span class="pill ${last.e1rm >= 225 ? 'ok' : 'stop'}">${last.e1rm >= 225 ? '✓ 225 reached' : '✕ Off track for 225'}</span></div></div>
+      <div style="text-align:right">${data.bench_goal ? `<span class="pill ${last.e1rm >= data.bench_goal ? 'ok' : 'off'}">${last.e1rm >= data.bench_goal ? `✓ ${data.bench_goal} reached` : `Goal ${data.bench_goal} by Lake Placid`}</span>` : ''}</div></div>
       <table style="margin-top:10px">${b.slice(-8).reverse().map(x => `<tr><td>${fmt(x.day, {month: 'short', day: 'numeric'})}</td><td>${x.e1rm} lb est.</td><td class="muted">top ${x.top}</td></tr>`).join('')}</table>` : '<p class="muted">No bench sessions in Hevy yet.</p>'}</section>`;
   } catch (e) { if (e.auth) return showSignin('Signed out on this device. Paste your token again.'); $('trends').innerHTML = errorCard('Trends', e.why || e.message); }
 }
@@ -613,7 +755,8 @@ async function loadApproval() {
     if (data.approved_at || !data.sessions.length) return;
     const day = d => fmt(d, {weekday: 'short', month: 'short', day: 'numeric'});
     const rows = data.sessions.map(s => `<li><b>${esc(day(s.date))}</b> · ${esc(s.label || 'any time')} · ${esc(s.title)}${s.duration_min ? ` (${Math.round(s.duration_min)} min)` : ''}</li>`).join('');
-    $('today').insertAdjacentHTML('afterbegin', `<section class="card" id="approvalcard"><div class="label">Approve the week of ${esc(fmt(data.week_start, {month: 'short', day: 'numeric'}))}</div>
+    const anchor = $('statuslight');
+    (anchor ? anchor : $('today')).insertAdjacentHTML(anchor ? 'afterend' : 'afterbegin', `<section class="card" id="approvalcard"><div class="label">Approve the week of ${esc(fmt(data.week_start, {month: 'short', day: 'numeric'}))}</div>
       <ul class="crit" style="margin:6px 0 10px">${rows}</ul>
       ${data.timing_note ? `<div class="n4m">Times: ${esc(data.timing_note)}</div>` : ''}
       <button class="primary-btn" id="approvebtn">Approve: send to Garmin + calendar</button>

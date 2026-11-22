@@ -250,3 +250,24 @@ details.pb .brief{margin:4px 0 2px}
 .refresh{flex:none;width:30px;height:30px;border-radius:50%;border:0;background:var(--card2);color:var(--ink);font:600 16px/30px inherit;cursor:pointer;padding:0}
 .refresh.spin{animation:spin 1s linear infinite;color:var(--blue)}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+/* status light */
+.card.light{display:flex;gap:12px;align-items:flex-start}
+.lamp{flex:none;width:14px;height:14px;border-radius:50%;margin-top:4px;box-shadow:0 0 0 4px rgba(255,255,255,.06)}
+.light-label{font-weight:700;font-size:16px}
+.light-why{color:var(--ink2);font-size:13px;margin-top:2px}
+.light-watch{color:var(--orange);font-size:12px;margin-top:6px}
+.details-card{background:var(--card);border-radius:14px;padding:12px 14px;margin-bottom:12px}
+.details-card summary{cursor:pointer;color:var(--ink2);font-size:13px}
+.details-card .card{background:transparent;padding:10px 0 0;margin:0}
+/* plan / season toggle */
+.seg{display:flex;background:var(--card);border-radius:10px;padding:3px;margin-bottom:12px}
+.seg button{flex:1;background:none;border:0;color:var(--ink2);font:inherit;font-size:13px;padding:7px;border-radius:8px}
+.seg button[aria-selected="true"]{background:var(--card2);color:var(--ink);font-weight:600}
+.strip{position:relative;display:flex;height:14px;border-radius:7px;overflow:hidden;gap:2px;margin-top:6px}
+.seg-ph{height:100%}
+.strip-now{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink)}
+.season-row{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}
+.season-row.past{opacity:.5}
+.season-d{flex:none;width:54px;color:var(--muted)}
+.season-i{flex:none;width:20px;text-align:center}

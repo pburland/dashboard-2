@@ -369,6 +369,14 @@ def api_trends() -> dict:
         return view.trends(conn, clock.today())
 
 
+@app.get("/api/season", dependencies=[Depends(require_admin)])
+def api_season() -> dict:
+    """The season on one page: phases, races, tests, return, checkpoints."""
+    from app import db, today as view
+    with db.connect() as conn:
+        return view.season(conn, clock.today())
+
+
 @app.get("/api/reports", dependencies=[Depends(require_admin)])
 def api_reports() -> list:
     from app import db, reports

@@ -38,7 +38,15 @@ def build(conn, today: date, next_days: int = 4, checkin_id: int | None = None) 
                  "invalid": [{"kind": t["kind"], "test_date": t["test_date"], "reason": t["reason"]}
                              for t in fitness_tests.recent_invalid(conn, today)],
                  "due": fitness_tests.due_notes(conn, today)}
-    g = health_gate(db.open_episode(conn, today), signals, today)
+    episode = db.open_episode(conn, today)
+    g = health_gate(episode, signals, today)
+    comeback = None
+    if g.status.value == "return" and episode and episode.return_started_on:
+        paused = episode.return_paused
+        total = (episode.return_ends_on - episode.return_started_on).days + 1 - len(paused)
+        day = (today - episode.return_started_on).days + 1 - sum(1 for d in paused if d < today)
+        comeback = {"day": max(1, day), "days": total, "ends": episode.return_ends_on,
+                    "volume_pct": int(round(g.volume_multiplier * 100))}
 
     plans = conn.execute(
         "select * from planned_workouts where plan_date between %s and %s and status <> 'superseded' "
@@ -119,7 +127,7 @@ def build(conn, today: date, next_days: int = 4, checkin_id: int | None = None) 
         "where": {"place": here.name, "away": here.away, "sports": list(here.sports or []), "note": here.note},
         "health": {"status": g.status.value, "prescriptions_allowed": g.prescriptions_allowed,
                    "intensity_ceiling": g.intensity_ceiling, "volume_multiplier": g.volume_multiplier,
-                   "reasons": list(g.reasons), "watch": list(watched.notes),
+                   "reasons": list(g.reasons), "watch": list(watched.notes), "comeback": comeback,
                    "watch_learning_hrv": watched.learning_hrv},
         "readiness": rec and {"day": rec["day"], "readiness": rec["readiness"], "sleep_score": rec["sleep_score"],
                               "resting_hr": rec["resting_hr"], "hrv_ms": rec["hrv_ms"],
@@ -187,10 +195,109 @@ def trends(conn, today: date, weeks: int = 10) -> dict:
            from strength_sets where exercise ilike 'bench press%%' and not excluded
              and coalesce(set_type, 'normal') not in ('warmup') and reps between 1 and 12
            group by 1 order by 1""").fetchall()
-    from app import checkins
+    from app import checkins, strength
+    goals = {label: pts for label, _, pts in strength.lift_checkpoints(conn)}
+    bench_goal = max((v for _, v in goals.get("Bench", [])), default=None)
     return {
+        "load": load_trend(conn, today),
+        "weight": weight_trend(conn, today),
+        "efficiency": efficiency_trend(conn, today),
+        "bench_goal": bench_goal,
         "rpe7": checkins.rpe_trend(conn, start, today),
         "weekly_run_mi": [{"week": w, "actual": round(actual.get(w) or 0, 1),
                            "planned": round(planned[w], 1) if w in planned else None} for w in wk],
         "bench": [{"day": b["day"], "e1rm": round(b["e1rm"], 1), "top": b["top"]} for b in bench],
     }
+
+
+# ── trends that change a decision (outside review, Card 11) ────────────────
+LOAD_DAYS = 112                     # what the chart shows (16 weeks)
+EF_HR = 140                         # pace is shown at this heart rate
+
+
+def load_trend(conn, today: date) -> dict:
+    """Fitness (42-day average load), fatigue (7-day) and form (fitness - fatigue),
+    from each workout's heart-rate load (TRIMP) until per-sport TSS is built.
+    Seeded from 12 months back so fitness starts honestly low, not at zero."""
+    seed = today - timedelta(days=365)
+    daily = {r["local_date"]: r["load"] for r in conn.execute(
+        """select local_date, sum(load_trimp) as load from activities where local_date between %s and %s
+           and load_trimp is not null group by 1""", (seed, today)).fetchall()}
+    ctl = atl = 0.0
+    out = []
+    d = seed
+    while d <= today:
+        x = daily.get(d) or 0.0
+        ctl += (x - ctl) / 42
+        atl += (x - atl) / 7
+        if d > today - timedelta(days=LOAD_DAYS):
+            out.append({"day": d, "fitness": round(ctl, 1), "fatigue": round(atl, 1), "form": round(ctl - atl, 1)})
+        d += timedelta(days=1)
+    return {"source": "heart-rate load (TRIMP); switches to per-sport TSS when it's built", "days": out}
+
+
+def weight_trend(conn, today: date) -> dict:
+    rows = conn.execute("select day, weight_lb from body_metrics where weight_lb is not null and day between %s and %s "
+                        "order by day", (today - timedelta(days=LOAD_DAYS + 7), today)).fetchall()
+    w = {r["day"]: r["weight_lb"] for r in rows}
+    out = []
+    for i in range(LOAD_DAYS):
+        d = today - timedelta(days=LOAD_DAYS - 1 - i)
+        week = [w[x] for x in (d - timedelta(days=k) for k in range(7)) if x in w]
+        if len(week) >= 3:
+            out.append({"day": d, "avg7": round(sum(week) / len(week), 1), "weighed": w.get(d)})
+    return {"days": out}
+
+
+def efficiency_trend(conn, today: date) -> dict:
+    """Pace at 140 bpm on easy runs: flat (< 15 m climbing per mile), cool (< 75°F when the
+    weather is known), 20+ minutes. Each run gives speed per heartbeat (efficiency factor);
+    the line is its 4-week rolling mean, shown as a pace at 140 bpm."""
+    rows = conn.execute(
+        """select local_date, distance_m, coalesce(moving_s, duration_s) as secs, avg_hr, elevation_gain_m, weather
+           from activities where sport = 'run' and local_date between %s and %s and avg_hr > 0
+             and distance_m > 1609 and coalesce(moving_s, duration_s) >= 1200 order by local_date""",
+        (today - timedelta(days=LOAD_DAYS + 28), today)).fetchall()
+    runs = []
+    for r in rows:
+        miles = r["distance_m"] / MI
+        if (r["elevation_gain_m"] or 0) / miles >= 15:
+            continue
+        temp = (r["weather"] or {}).get("temp_f") if isinstance(r["weather"], dict) else None
+        if temp is not None and temp >= 75:
+            continue
+        if r["avg_hr"] > 160:                                  # not an easy run
+            continue
+        ef = (r["distance_m"] / r["secs"]) / r["avg_hr"]       # m/s per bpm
+        runs.append((r["local_date"], ef))
+    out = []
+    for d, ef in runs:
+        if d <= today - timedelta(days=LOAD_DAYS):
+            continue
+        window = [e for x, e in runs if d - timedelta(days=28) < x <= d]
+        roll = sum(window) / len(window)
+        out.append({"day": d, "pace_s": round(MI / (ef * EF_HR)), "rolling_pace_s": round(MI / (roll * EF_HR))})
+    return {"hr": EF_HR, "runs": out}
+
+
+def season(conn, today: date) -> dict:
+    """One page: phases, races, tests, the return, checkpoints, calorie blocks, lift checkpoints."""
+    from app import checkpoints, strength
+    phases = conn.execute("select name, kind, start_date, end_date from phases where end_date >= %s "
+                          "order by start_date", (today - timedelta(days=14),)).fetchall()
+    races = conn.execute("select name, race_date, distance, priority, status from races "
+                         "where status not in ('dropped', 'deferred') and race_date >= %s order by race_date",
+                         (today,)).fetchall()
+    events = conn.execute("select event_date, sport, kind, title from plan_events where event_date >= %s "
+                          "order by event_date", (today,)).fetchall()
+    ep = db.open_episode(conn, today)
+    ret = ({"start": ep.return_started_on, "end": ep.return_ends_on}
+           if ep and ep.return_started_on and ep.return_ends_on and ep.return_ends_on >= today else None)
+    plan = (conn.execute("select target from goals where name = 'Daily targets'").fetchone() or {}).get("target") or {}
+    blocks = [b for b in (plan.get("nutrition_plan") or {}).get("deficit_blocks", []) if b["to"] >= today.isoformat()]
+    cps = [{"date": c["date"], "name": c["name"]} for c in checkpoints.CHECKPOINTS if c["date"] >= today]
+    lifts = [{"lift": label, "date": d, "lb": v} for label, _, pts in strength.lift_checkpoints(conn)
+             for d, v in pts if d >= today]
+    return {"today": today, "phases": phases, "races": races, "events": events, "return": ret,
+            "deficit_blocks": blocks, "checkpoints": cps, "lift_checkpoints": lifts,
+            "undecided": "Puerto Rico (Mar 14) or Texas (Apr 4): undecided; the plan builds to the earlier date"}
