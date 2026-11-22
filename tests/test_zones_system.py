@@ -34,7 +34,9 @@ def test_bike_and_swim_results():
     b = ft.bike_result([lap(0, 0, 1200, 130, 150), lap(1, 0, 300, 165, 300), lap(2, 0, 1200, 170, 210)])
     assert b["ftp_w"] == 200 and b["bike_lthr"] == 162          # 95% of 210 W and of 170 bpm
     s = ft.swim_result([lap(0, 365.76, 440), lap(1, 182.88, 210), lap(2, 100, 200)])
-    assert s == {"css_s_per_100": 115.0, "unit": "yd", "t400_s": 440, "t200_s": 210}
+    assert s["css_s_per_100"] == 115.0 and s["method"] == "400 + 200 (CSS)"
+    f = ft.swim_result([lap(0, 300, 330), lap(1, 914.4, 1250), lap(2, 200, 260)])   # Friel: 1000 yd in 20:50
+    assert f == {"css_s_per_100": 125.0, "unit": "yd", "method": "1000 time trial (Friel T-pace)", "t1000_s": 1250}
 
 
 def test_validity_gate():
@@ -112,8 +114,8 @@ def test_a_big_change_waits_for_ok_and_an_invalid_test_schedules_a_retest(conn):
 @needs_db
 def test_manual_entry_and_retest_reminder(conn):
     ft.record_manual(conn, "swim_css", date(2026, 12, 7), css_s_per_100=115, unit="yd")
-    assert "1:55 per 100 yd" in " ".join(zones.summary())
-    assert ft.due_notes(conn, date(2027, 1, 14)) == ["The swim test (CSS) is due around Jan 18 (6 weeks since the last one)."]
+    assert "T-pace from Dec 7: 1:55 per 100 yd" in " ".join(zones.summary())
+    assert ft.due_notes(conn, date(2027, 1, 14)) == ["The swim test (T-pace) is due around Jan 18 (6 weeks since the last one)."]
     assert ft.due_notes(conn, date(2027, 1, 5)) == []
 
 

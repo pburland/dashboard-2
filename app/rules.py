@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-VERSION = "2026-11-23.1"
+VERSION = "2026-11-23.2"
 
 
 @dataclass(frozen=True)
@@ -137,9 +137,13 @@ RULES: tuple[Rule, ...] = (
                             ("Z5a", 0.97, 1.01), ("Z5b", 0.90, 0.97), ("Z5c", 0.00, 0.90)),
          "time per mile as a fraction of threshold pace (fast, slow)",
          "Run pace zones from the LTHR test's threshold pace (Z1 slower than 129%).", FRIEL, "C"),
-    Rule("css_zone_offsets", {"Z1": 10, "Z2": 5, "Z3": 0, "Z4": -3, "Z5": -6}, "s per 100 vs CSS",
-         "Swim target pace per zone from CSS (Z3 is CSS ±2 s).", "Coaching convention; CSS method "
-         "(Wakayoshi et al.)", "C"),
+    Rule("swim_test", "1000 time trial", "test", "Swim threshold test: an all-out 1000 (yd or m); T-pace per 100 "
+         "= time / 10. Chosen over the 400 + 200 CSS test to match Friel's swim zones and workouts.",
+         f"{FRIEL}", "C", "2026-11-23: was CSS 400 + 200; Patrick's choice"),
+    Rule("css_zone_offsets", {"Z1": 10, "Z2": 5, "Z3": 0, "Z4": -3, "Z5": -6}, "s per 100 vs T-pace",
+         "PROVISIONAL swim target pace per zone from T-pace (Z3 is T-pace ±2 s), until Friel's swim zone "
+         "table is transcribed from the book.", "Coaching convention", "D",
+         "2026-11-23: now applied to Friel T-pace; grade D until the book table replaces it"),
     Rule("power_zones", (("Z1", 0.00, 0.56), ("Z2", 0.56, 0.76), ("Z3", 0.76, 0.91), ("Z4", 0.91, 1.06),
                          ("Z5", 1.06, 1.21), ("Z6", 1.21, 9.99)), "fraction of FTP",
          "Indoor bike power zones (KICKR CORE only; outdoor rides use bike HR zones).",

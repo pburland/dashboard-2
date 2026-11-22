@@ -107,8 +107,9 @@ TOOLS = [
          "threshold_pace": {"type": "string", "description": "run: pace over those 20 min, m:ss per mile"},
          "test_power_w": {"type": "integer", "description": "bike: average power over the 20-min effort"},
          "test_avg_hr": {"type": "integer", "description": "bike: average HR over the 20-min effort"},
-         "t400": {"type": "string", "description": "swim: 400 time m:ss"},
-         "t200": {"type": "string", "description": "swim: 200 time m:ss"},
+         "t1000": {"type": "string", "description": "swim: 1000 time trial m:ss (Friel's test)"},
+         "t400": {"type": "string", "description": "swim, only if he swam a CSS test: 400 time m:ss"},
+         "t200": {"type": "string", "description": "swim, only if he swam a CSS test: 200 time m:ss"},
          "unit": {"type": "string", "enum": ["yd", "m"]}},
          "required": ["kind"]}},
     {"name": "add_travel",
@@ -364,7 +365,7 @@ def run_tool(conn, name: str, args: dict, today: date, turn_started=None,
                 row = fitness_tests.record_manual(conn, kind, on, test_power_w=args.get("test_power_w"),
                                                   bike_lthr=hr and round(rules.value("bike_lthr_factor") * hr))
             else:
-                css = (secs(args["t400"]) - secs(args["t200"])) / 2
+                css = secs(args["t1000"]) / 10 if args.get("t1000") else (secs(args["t400"]) - secs(args["t200"])) / 2
                 row = fitness_tests.record_manual(conn, kind, on, css_s_per_100=css, unit=args.get("unit") or "yd")
         except (KeyError, ValueError, TypeError) as e:
             return {"ok": False, "error": f"missing or unreadable number: {e}"}

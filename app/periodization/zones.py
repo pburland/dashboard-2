@@ -120,5 +120,6 @@ def summary() -> list[str]:
     t = _CURRENT.get("swim_css")
     if t:
         r = t["result"]
-        out.append(f"Swim CSS from {t['test_date']:%b %-d}: {fmt_pace(r['css_s_per_100'])} per 100 {r.get('unit', 'yd')}.")
+        out.append(f"Swim T-pace from {t['test_date']:%b %-d}: {fmt_pace(r['css_s_per_100'])} per 100 {r.get('unit', 'yd')}"
+                   " (swim zone offsets are provisional until Friel's table is in).")
     return out

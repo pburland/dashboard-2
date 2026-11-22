@@ -7,7 +7,8 @@ After each sync, a planned test session with a matched activity is read:
              splits 10 + 20 min); otherwise approximated from per-mile laps.
   bike FTP   the ~20-min lap with power: FTP = 95% of its average power (indoor,
              KICKR CORE), bike LTHR = 95% of its average HR.
-  swim CSS   the ~400 and ~200 intervals: CSS = (t400 - t200) / 2 per 100.
+  swim       Friel's 1000 time trial: T-pace = time / 10 per 100 (Patrick chose this
+             Nov 23 2026). A 400 + 200 CSS test is still read if that's what he swam.
 
 Validity (rules registry): HR on 90%+ of the effort, a flat run (<= 30 m/mi
 climbing), RPE 8+ if a check-in was logged. An invalid test keeps the old zones
@@ -26,7 +27,7 @@ MI = 1609.344
 YD = 0.9144
 KINDS = {"run": "run_lthr", "bike": "bike_ftp", "swim": "swim_css"}
 SPORT = {v: k for k, v in KINDS.items()}
-NAMES = {"run_lthr": "run test (LTHR)", "bike_ftp": "bike test (FTP)", "swim_css": "swim test (CSS)"}
+NAMES = {"run_lthr": "run test (LTHR)", "bike_ftp": "bike test (FTP)", "swim_css": "swim test (T-pace)"}
 
 
 def _w(laps, key):
@@ -95,15 +96,21 @@ def bike_result(laps: list[dict]) -> dict | None:
 
 
 def swim_result(laps: list[dict]) -> dict | None:
-    for unit, size in (("yd", YD), ("m", 1.0)):
+    for unit, size in (("yd", YD), ("m", 1.0)):           # Friel: one 1000 time trial
+        c = [l for l in laps if l["distance_m"] and abs(l["distance_m"] - 1000 * size) <= 0.04 * 1000 * size]
+        if c:
+            t = min(c, key=lambda l: l["duration_s"])["duration_s"]
+            return {"css_s_per_100": round(t / 10, 1), "unit": unit, "method": "1000 time trial (Friel T-pace)",
+                    "t1000_s": round(t)}
+    for unit, size in (("yd", YD), ("m", 1.0)):           # fallback: a 400 + 200 CSS test
         def near(target):
             c = [l for l in laps if l["distance_m"] and abs(l["distance_m"] - target * size) <= 0.06 * target * size]
             return min(c, key=lambda l: l["duration_s"]) if c else None
         a, b = near(400), near(200)
         if a and b and a["duration_s"] > b["duration_s"]:
             css = (a["duration_s"] - b["duration_s"]) / 2
-            return {"css_s_per_100": round(css, 1), "unit": unit, "t400_s": round(a["duration_s"]),
-                    "t200_s": round(b["duration_s"])}
+            return {"css_s_per_100": round(css, 1), "unit": unit, "method": "400 + 200 (CSS)",
+                    "t400_s": round(a["duration_s"]), "t200_s": round(b["duration_s"])}
     return None
 
 
@@ -111,7 +118,7 @@ def invalid_reason(kind: str, result: dict | None, activity: dict | None, rpe: i
     if result is None:
         return {"run_lthr": "couldn't find the 30-minute effort in the laps",
                 "bike_ftp": "couldn't find a 20-minute lap with power (was the KICKR paired?)",
-                "swim_css": "couldn't find a ~400 and a ~200 interval"}[kind]
+                "swim_css": "couldn't find the 1000 time trial (press lap right before and after it)"}[kind]
     if kind in ("run_lthr", "bike_ftp"):
         if kind == "run_lthr" or result.get("bike_lthr"):
             if result.get("hr_coverage", 1) < rules.value("test_hr_coverage"):
@@ -195,7 +202,7 @@ def record_manual(conn, kind: str, test_date: date, *, lthr=None, threshold_pace
         ftp = ftp_w or (test_power_w and round(rules.value("ftp_factor") * test_power_w))
         result = {"ftp_w": ftp and int(ftp), "bike_lthr": bike_lthr and int(bike_lthr)}
     else:
-        result = {"css_s_per_100": float(css_s_per_100), "unit": unit}
+        result = {"css_s_per_100": float(css_s_per_100), "unit": unit, "method": "entered by hand"}
     result = {k: v for k, v in result.items() if v is not None}
     row = save(conn, kind, test_date, result, None, source="manual")
     conn.commit()
@@ -240,4 +247,4 @@ def describe(row: dict) -> str:
     if kind == "bike_ftp":
         return ", ".join(x for x in (r.get("ftp_w") and f"FTP {r['ftp_w']} W (indoor)",
                                       r.get("bike_lthr") and f"bike LTHR {r['bike_lthr']} bpm") if x)
-    return f"CSS {zones.fmt_pace(r['css_s_per_100'])} per 100 {r.get('unit', 'yd')}"
+    return f"T-pace {zones.fmt_pace(r['css_s_per_100'])} per 100 {r.get('unit', 'yd')}"
