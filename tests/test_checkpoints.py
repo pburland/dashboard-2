@@ -37,11 +37,13 @@ def test_jan31_go_no_go(conn):
 @needs_db
 def test_fitness_tests_replace_the_template_session(conn):
     from app.planning import generator as g
-    wp = g.plan_week(conn, date(2026, 11, 30), basis_mi=16, today=date(2026, 11, 29))
-    tue = [x for x in wp.drafts if x.date == date(2026, 12, 1) and x.sport == "run"]
-    assert len(tue) == 1 and tue[0].title.startswith("Run test") and tue[0].is_key and tue[0].duration_min == 50
-    assert "LTHR" in tue[0].notes
-    # Push (upper body) still shares the day; heavy legs never would.
-    assert any(x.sport == "strength" and x.date == date(2026, 12, 1) for x in wp.drafts)
-    swim = g.plan_week(conn, date(2026, 12, 7), basis_mi=16, today=date(2026, 12, 6))
-    assert any(x.title.startswith("Swim test") for x in swim.drafts if x.date == date(2026, 12, 7))
+    # Tests sit after the return to training (seed 021): swim Fri Dec 18, run Sat Dec 19.
+    wp = g.plan_week(conn, date(2026, 12, 14), basis_mi=16, today=date(2026, 12, 13))
+    sat = [x for x in wp.drafts if x.date == date(2026, 12, 19) and x.sport == "run"]
+    assert len(sat) == 1 and sat[0].title.startswith("Run test") and sat[0].is_key and sat[0].duration_min == 50
+    assert "LTHR" in sat[0].notes
+    assert any(x.title.startswith("Swim test") for x in wp.drafts if x.date == date(2026, 12, 18))
+    assert any(x.title.startswith("Bike test") for x in wp.drafts if x.date == date(2026, 12, 16))
+    # During the return the hard tests would be skipped (Z2 cap): none planned the week of Nov 30.
+    early = g.plan_week(conn, date(2026, 11, 30), basis_mi=16, today=date(2026, 11, 29))
+    assert not any("test" in x.title.lower() for x in early.drafts)

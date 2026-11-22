@@ -115,3 +115,10 @@ def test_manual_entry_and_retest_reminder(conn):
     assert "1:55 per 100 yd" in " ".join(zones.summary())
     assert ft.due_notes(conn, date(2027, 1, 28)) == ["The swim test (CSS) is due around Feb 1 (8 weeks since the last one)."]
     assert ft.due_notes(conn, date(2027, 1, 10)) == []
+
+
+@needs_db
+def test_tests_sit_after_the_return(conn):
+    rows = {r["sport"]: r["event_date"] for r in conn.execute(
+        "select sport, event_date from plan_events where kind = 'test'").fetchall()}
+    assert rows == {"run": date(2026, 12, 19), "swim": date(2026, 12, 18), "bike": date(2026, 12, 16)}

@@ -486,7 +486,8 @@ def _apply_events(conn, drafts: list[Draft], ws: date, today: date, gate_for) ->
         for x in [x for x in drafts if x.sport == e["sport"] and (x.date == d or (long and x.kind == "long"))]:
             drafts.remove(x)                       # a fixed long run replaces the week's template long run
         x = Draft(d, e["sport"], e["kind"], e["title"], zone=e["zone"], duration_min=e["duration_min"],
-                  is_long=long, notes=e["notes"] or None, structure={"gen_key": f"{e['sport']}:{e['kind']}#1"})
+                  is_long=long, notes=e["notes"] or None,
+                  structure={"gen_key": f"{e['sport']}:{e['kind']}#1", "fixed_date": True})
         if e["sport"] == "run":
             x.distance_mi = _round_half(e["duration_min"] / EASY_MIN_PER_MI)
         drafts.append(x)
@@ -629,7 +630,8 @@ def _place(drafts: list[Draft], ws: date, today: date, gate_for, cal: Calendar, 
         return (not cal.available) or cal.free_minutes(d) >= (x.duration_min or 30) + (
             bricks[x.date].duration_min if x.label == "brick" and x.date in bricks else 0)
 
-    for x in sorted(endurance, key=lambda x: (not x.is_key, x.date)):
+    # Fixed-date sessions (tests, rehearsals) claim their day first; template key sessions move around them.
+    for x in sorted(endurance, key=lambda x: (not x.is_key, not x.structure.get("fixed_date"), x.date)):
         if x.kind == "brick":
             continue                                    # travels with its ride
         missed_on = missed_keys.get(x.structure.get("gen_key"))
