@@ -420,6 +420,19 @@ def api_garmin_push(enabled: bool | None = Body(default=None, embed=True)) -> di
             raise HTTPException(502, f"Garmin: {type(e).__name__}: {e}"[:300])
 
 
+@app.post("/api/tests/{test_id}/{choice}", dependencies=[Depends(require_admin)])
+def api_test_decision(test_id: int, choice: str) -> dict:
+    """Apply a pending fitness test's zones, or keep the old ones."""
+    from app import db, fitness_tests
+    if choice not in ("apply", "reject"):
+        raise HTTPException(404, "not found")
+    with db.connect() as conn:
+        row = fitness_tests.decide(conn, test_id, choice == "apply")
+    if not row:
+        raise HTTPException(409, "that test isn't waiting for a decision")
+    return {"ok": True, "status": row["status"]}
+
+
 @app.get("/api/calendar/feed", dependencies=[Depends(require_admin)])
 def api_calendar_feed(request: Request) -> dict:
     """The address of the workout calendar feed, for subscribing once."""

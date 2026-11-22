@@ -83,9 +83,14 @@ def run(kind: str = "manual", days: int = 3, morning: bool = False, only: tuple[
                 return out
 
             def evaluate_all():
+                from app import fitness_tests
+                from app.periodization import zones
+                zones.refresh(conn)
                 matched = evaluate.match_planned(conn, start, today)
                 flagged = evaluate.activity_flags(conn, start)
-                out = {"matched": matched, "activity_flags": flagged}
+                tests = fitness_tests.process(conn, start)
+                out = {"matched": matched, "activity_flags": flagged,
+                       "tests": [{"kind": t["kind"], "status": t["status"], "reason": t["reason"]} for t in tests]}
                 if morning:
                     from app import travel
                     from app.integrations import weather

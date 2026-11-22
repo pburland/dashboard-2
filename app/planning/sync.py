@@ -112,6 +112,8 @@ def diff(conn, wp: generator.WeekPlan, today: date, preview: bool) -> tuple[list
 
 def plan_and_sync(conn, ws: date, *, basis_mi: float, factor: float, hist, today: date, cal,
                   preview: bool, trigger: str, policy: str = "apply") -> generator.WeekPlan:
+    from app.periodization import zones
+    zones.refresh(conn)
     fixed, missed = week_context(conn, ws, today)
     wp = generator.plan_week(conn, ws, basis_mi=basis_mi, factor=factor, hist=hist, today=today, cal=cal,
                              fixed=fixed, missed_keys=missed)

@@ -163,8 +163,12 @@ def build(conn, ws: date, *, replan: bool = True, today: date | None = None) -> 
     # Computed lines, not written by the model.
     cp = checkpoints.check(conn, ws + timedelta(days=6))
     summary["checkpoint"] = cp
+    from app import fitness_tests
+    from app.periodization import zones
+    zones.refresh(conn)
+    zone_lines = "**Zones**: " + " ".join(zones.summary() + fitness_tests.due_notes(conn, today or ws))
     text = "\n\n".join(x for x in (text, checkpoints.markdown(cp), bodycomp.markdown(weigh), bench,
-                                    weights.markdown()) if x)
+                                    zone_lines, weights.markdown()) if x)
     summary["weight_check"] = weigh
     summary["decision"] = decision
     summary["next_week"] = next_week

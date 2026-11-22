@@ -28,7 +28,16 @@ def build(conn, today: date, next_days: int = 4, checkin_id: int | None = None) 
 
     signals = evaluate.morning_signals(conn, today)
     from app.health import watch
+    from app import fitness_tests
+    from app.periodization import zones
     watched = watch.load(conn, today)
+    zones.refresh(conn)
+    zone_info = {"summary": zones.summary(),
+                 "pending": [{"id": t["id"], "kind": t["kind"], "test_date": t["test_date"],
+                              "text": fitness_tests.describe(t)} for t in fitness_tests.pending(conn)],
+                 "invalid": [{"kind": t["kind"], "test_date": t["test_date"], "reason": t["reason"]}
+                             for t in fitness_tests.recent_invalid(conn, today)],
+                 "due": fitness_tests.due_notes(conn, today)}
     g = health_gate(db.open_episode(conn, today), signals, today)
 
     plans = conn.execute(
@@ -117,6 +126,7 @@ def build(conn, today: date, next_days: int = 4, checkin_id: int | None = None) 
                               "temp_deviation_c": rec["temp_deviation_c"],
                               "resting_hr_baseline": signals.resting_hr_baseline},
         "sessions": today_sessions,
+        "zones": zone_info,
         "next_days": [{"date": d, "sessions": s} for d, s in sorted(upcoming.items())],
         "long_run_gate": evaluate.upcoming_gate(conn, today),
         "recent_activities": [{

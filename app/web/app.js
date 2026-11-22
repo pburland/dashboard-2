@@ -306,6 +306,25 @@ function fuelCard(f, b) {
     ${f.why.length ? `<div class="n4m" style="margin-top:8px">${esc(f.why.join('; '))}</div>` : ''}${body}</section>`;
 }
 
+function zonesCard(z) {
+  if (!z || !(z.pending.length || z.invalid.length || z.due.length)) return '';
+  const name = {run_lthr: 'Run test', bike_ftp: 'Bike test', swim_css: 'Swim test'};
+  const pend = z.pending.map(p => `<p><b>${name[p.kind]} (${esc(fmt(p.test_date, {month: 'short', day: 'numeric'}))})</b>:
+      ${esc(p.text)}. That's a big change from the provisional numbers. Use the new zones?</p>
+      <button class="primary-btn" data-test="${p.id}" data-choice="apply">Use new zones</button>
+      <button class="ghost-btn" data-test="${p.id}" data-choice="reject" style="margin-top:8px;width:100%">Keep the old ones</button>`).join('');
+  const bad = z.invalid.map(i => `<p class="muted">${name[i.kind]} didn't count: ${esc(i.reason)}. Old zones kept; a re-test is planned in 7 days.</p>`).join('');
+  const due = z.due.map(d => `<p class="muted">${esc(d)}</p>`).join('');
+  return `<section class="card"><div class="label">Training zones</div>${pend}${bad}${due}<div class="n4m" id="zonemsg"></div></section>`;
+}
+
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-test]');
+  if (!b) return;
+  try { await post(`/api/tests/${b.dataset.test}/${b.dataset.choice}`, {}); $('zonemsg').textContent = 'Saved. Updating your plan…'; setTimeout(start, 800); }
+  catch (err) { $('zonemsg').textContent = err.why || err.message; }
+});
+
 function statusLine(h, phase) {
   const cls = {clear: 'blue', caution: 'warn', hold: 'stop', return: 'ok'}[h.status];
   const label = {clear: phase.name || 'Training', caution: 'Caution today', hold: 'Health hold', return: 'Return to training'}[h.status];
@@ -344,6 +363,7 @@ function renderToday(t, cached) {
     : `<div class="n4m">${t.health.prescriptions_allowed ? 'Nothing planned yet.' : 'Nothing during the hold. The Plan tab shows what follows once you\'re cleared.'}</div>`;
   todayHtml += `<section class="card"><div class="label">Next 4 days</div>${n4}${t.timing_note ? `<div class="n4m" style="margin-top:8px">Best times without: ${esc(t.timing_note)}</div>` : ''}</section>`;
   todayHtml += fuelCard(t.fuel, t.body);
+  todayHtml += zonesCard(t.zones);
   todayHtml += gateCard(t.long_run_gate) + readinessCard(t.readiness) + recentCard(t.recent_activities);
   $('today').innerHTML = todayHtml;
   wireCheckin(); wireProposals($('today')); wireClearance();

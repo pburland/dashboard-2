@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-VERSION = "2026-11-22.1"
+VERSION = "2026-11-22.2"
 
 
 @dataclass(frozen=True)
@@ -120,6 +120,34 @@ RULES: tuple[Rule, ...] = (
     Rule("bike_hr_zones", (("Z1", 0.00, 0.81), ("Z2", 0.81, 0.90), ("Z3", 0.90, 0.94), ("Z4", 0.94, 1.00),
                            ("Z5a", 1.00, 1.03), ("Z5b", 1.03, 1.07), ("Z5c", 1.07, 2.00)),
          "fraction of bike LTHR", "Bike heart-rate zones (outdoor rides).", FRIEL, "C"),
+    # ── zones and fitness tests (outside review, Card 2) ─────────────────────
+    Rule("easy_hr_floor", 125, "bpm", "PROVISIONAL bottom of the easy-run HR range on the watch until the "
+         "LTHR test.", "System default", "D"),
+    Rule("run_pace_zones", (("Z1", 1.29, 9.99), ("Z2", 1.14, 1.29), ("Z3", 1.06, 1.14), ("Z4", 1.01, 1.06),
+                            ("Z5a", 0.97, 1.01), ("Z5b", 0.90, 0.97), ("Z5c", 0.00, 0.90)),
+         "time per mile as a fraction of threshold pace (fast, slow)",
+         "Run pace zones from the LTHR test's threshold pace (Z1 slower than 129%).", FRIEL, "C"),
+    Rule("css_zone_offsets", {"Z1": 10, "Z2": 5, "Z3": 0, "Z4": -3, "Z5": -6}, "s per 100 vs CSS",
+         "Swim target pace per zone from CSS (Z3 is CSS ±2 s).", "Coaching convention; CSS method "
+         "(Wakayoshi et al.)", "C"),
+    Rule("power_zones", (("Z1", 0.00, 0.56), ("Z2", 0.56, 0.76), ("Z3", 0.76, 0.91), ("Z4", 0.91, 1.06),
+                         ("Z5", 1.06, 1.21), ("Z6", 1.21, 9.99)), "fraction of FTP",
+         "Indoor bike power zones (KICKR CORE only; outdoor rides use bike HR zones).",
+         "Coggan & Allen, Training and Racing with a Power Meter (2019)", "C"),
+    Rule("ftp_factor", 0.95, "fraction", "FTP = this share of the 20-minute test's average power.",
+         "Coggan & Allen 2019", "C"),
+    Rule("bike_lthr_factor", 0.95, "fraction", "Bike LTHR = this share of the 20-minute test's average HR.",
+         f"{FRIEL} (approximation)", "C"),
+    Rule("retest_weeks", 8, "weeks", "Re-test each sport this often (never in race week).",
+         "Coaching convention", "C"),
+    Rule("test_hr_coverage", 0.9, "fraction", "A run or bike test needs heart rate on at least this share "
+         "of the effort, or it doesn't count.", "System default", "D"),
+    Rule("test_max_climb_m_per_mi", 30, "m per mile", "A run test with more climbing than this doesn't count "
+         "(threshold pace needs flat ground).", "System default", "D"),
+    Rule("test_min_rpe", 8, "RPE", "A run or bike test logged below this effort doesn't count.",
+         "System default", "D"),
+    Rule("zone_change_confirm_bpm", 8, "bpm", "If a run test moves the top of easy HR by more than this, "
+         "Patrick confirms before the new zones apply.", "Outside review, Card 2", "D"),
 )
 
 _BY_ID = {r.id: r for r in RULES}

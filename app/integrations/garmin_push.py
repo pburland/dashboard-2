@@ -23,7 +23,6 @@ log = logging.getLogger("training.garmin_push")
 
 SPORTS = ("run", "bike", "swim")
 EASY_ZONES = ("Z1", "Z2")
-RUN_HR_FLOOR, BIKE_HR_FLOOR = 125, 110
 PREFIX = "TC"                          # marks workouts this app made
 
 
@@ -34,13 +33,29 @@ def settings(conn) -> dict:
 
 def fingerprint(s: dict) -> str:
     keys = ("plan_date", "sport", "title", "duration_min", "distance_mi", "max_zone")
-    raw = json.dumps({k: str(s.get(k)) for k in keys}, sort_keys=True)
+    d = {k: str(s.get(k)) for k in keys}
+    if (s.get("max_zone") or "Z2") in EASY_ZONES and s.get("sport") in ("run", "bike"):
+        from app.periodization import zones
+        lo, hi, provisional = zones.easy_hr_range(s["sport"])
+        if not provisional:                 # tested zones changed -> re-send the workout
+            d["hr"] = f"{lo}-{hi}"
+    raw = json.dumps(d, sort_keys=True)
     return hashlib.sha1(raw.encode()).hexdigest()[:16]
 
 
-def _hr_cap() -> int:
-    from app.ingest import evaluate
-    return evaluate.EASY_HR_CAP
+def _test_steps(sport: str):
+    """Fitness tests split so the app can read them: the run's 30 minutes as 10 + 20
+    (LTHR is the last 20), the bike's 20-minute effort as its own lap."""
+    from garminconnect.workout import create_cooldown_step, create_interval_step, create_recovery_step, create_warmup_step
+    if sport == "run":
+        plan = [(create_warmup_step, 900), (create_interval_step, 600), (create_interval_step, 1200),
+                (create_cooldown_step, 300)]
+    elif sport == "bike":
+        plan = [(create_warmup_step, 1200), (create_interval_step, 300), (create_recovery_step, 600),
+                (create_interval_step, 1200), (create_cooldown_step, 600)]
+    else:
+        return None
+    return [f(secs, i + 1) for i, (f, secs) in enumerate(plan)]
 
 
 def build(s: dict) -> dict:
@@ -53,21 +68,25 @@ def build(s: dict) -> dict:
     warm = 300 if total >= 25 * 60 else 0
     cool = 180 if total >= 25 * 60 else 0
     main = max(300, total - warm - cool)
-    steps, order = [], 1
-    if warm:
-        steps.append(create_warmup_step(warm, order))
-        order += 1
-    easy = zone in EASY_ZONES and sport in ("run", "bike")
-    if easy:
-        floor = RUN_HR_FLOOR if sport == "run" else BIKE_HR_FLOOR
-        cap = _hr_cap() if sport == "run" else _hr_cap() - 5
-        steps.append(create_targeted_interval_step(main, order, CustomHeartRateTarget(lower_limit=floor,
-                                                                                      upper_limit=cap)))
+    test = ":test#" in str((s.get("structure") or {}).get("gen_key") or "")
+    steps = _test_steps(sport) if test else None
+    if steps:
+        total = int(sum(st.endConditionValue for st in steps))
     else:
-        steps.append(create_interval_step(main, order))
-    order += 1
-    if cool:
-        steps.append(create_cooldown_step(cool, order))
+        steps, order = [], 1
+        if warm:
+            steps.append(create_warmup_step(warm, order))
+            order += 1
+        if zone in EASY_ZONES and sport in ("run", "bike"):
+            from app.periodization import zones
+            floor, cap, _ = zones.easy_hr_range(sport)
+            steps.append(create_targeted_interval_step(main, order, CustomHeartRateTarget(lower_limit=floor,
+                                                                                          upper_limit=cap)))
+        else:
+            steps.append(create_interval_step(main, order))
+        order += 1
+        if cool:
+            steps.append(create_cooldown_step(cool, order))
     cls = {"run": RunningWorkout, "bike": CyclingWorkout, "swim": SwimmingWorkout}[sport]
     proto = cls(workoutName="x", estimatedDurationInSecs=total, workoutSegments=[])
     day = s["plan_date"]
@@ -99,6 +118,8 @@ def sync(conn, today: date, days: int = DAYS, client=None) -> dict:
     end = today + timedelta(days=days - 1)
     if start > end:
         return out | {"skipped": f"starts {cfg['from']}"}
+    from app.periodization import zones
+    zones.refresh(conn)
     want = {r["id"]: r for r in _planned(conn, start, end)}
     have = {r["planned_workout_id"]: r for r in conn.execute(
         "select * from garmin_pushed where plan_date between %s and %s", (start, end)).fetchall()}

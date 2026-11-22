@@ -96,6 +96,21 @@ TOOLS = [
          "sport": {"type": "string"},
          "duration_min": {"type": "number"}},
          "required": ["type", "text"]}},
+    {"name": "record_test",
+     "description": "Record a fitness test result Patrick reads off his watch (when the app couldn't read it "
+                    "from the laps, or he tested outside the plan). Sets zones; a big change to easy HR waits for "
+                    "his OK on Today. Only use numbers he gives you; never estimate one.",
+     "input_schema": {"type": "object", "properties": {
+         "kind": {"type": "string", "enum": ["run_lthr", "bike_ftp", "swim_css"]},
+         "date": {"type": "string", "description": "YYYY-MM-DD of the test; default today."},
+         "lthr": {"type": "integer", "description": "run: average HR over the last 20 min of the 30-min test"},
+         "threshold_pace": {"type": "string", "description": "run: pace over those 20 min, m:ss per mile"},
+         "test_power_w": {"type": "integer", "description": "bike: average power over the 20-min effort"},
+         "test_avg_hr": {"type": "integer", "description": "bike: average HR over the 20-min effort"},
+         "t400": {"type": "string", "description": "swim: 400 time m:ss"},
+         "t200": {"type": "string", "description": "swim: 200 time m:ss"},
+         "unit": {"type": "string", "enum": ["yd", "m"]}},
+         "required": ["kind"]}},
     {"name": "add_travel",
      "description": "Record a trip so the plan works around it. can_train lists what he can do there "
                     "(e.g. ['run']); empty means no training (travel days).",
@@ -176,7 +191,10 @@ def context(conn, today: date) -> dict:
     monday = today - timedelta(days=today.weekday())
     weights = {"this_week": strength.for_week(conn, monday).markdown(),
                "next_week": strength.for_week(conn, monday + timedelta(days=7)).markdown()}
+    from app.periodization import zones as _zones
+    _zones.refresh(conn)
     return {
+        "zones": _zones.summary(),
         "lifting_weights": weights,
         "now": clock.now().isoformat(timespec="minutes"),
         "where": t.get("where"),
@@ -327,6 +345,32 @@ def run_tool(conn, name: str, args: dict, today: date, turn_started=None,
         conn.execute("update profile set user_prefs = user_prefs || jsonb_build_object(%s::text, %s::text) "
                      "where id = 1", (args["key"], args["value"]))
         return {"saved": True}
+    if name == "record_test":
+        from app import fitness_tests, rules
+
+        def secs(v):
+            if not v:
+                return None
+            m, s_ = str(v).split(":")
+            return int(m) * 60 + int(s_)
+        kind = args["kind"]
+        on = date.fromisoformat(args["date"]) if args.get("date") else today
+        try:
+            if kind == "run_lthr":
+                row = fitness_tests.record_manual(conn, kind, on, lthr=args["lthr"],
+                                                  threshold_pace_s_per_mi=secs(args.get("threshold_pace")))
+            elif kind == "bike_ftp":
+                hr = args.get("test_avg_hr")
+                row = fitness_tests.record_manual(conn, kind, on, test_power_w=args.get("test_power_w"),
+                                                  bike_lthr=hr and round(rules.value("bike_lthr_factor") * hr))
+            else:
+                css = (secs(args["t400"]) - secs(args["t200"])) / 2
+                row = fitness_tests.record_manual(conn, kind, on, css_s_per_100=css, unit=args.get("unit") or "yd")
+        except (KeyError, ValueError, TypeError) as e:
+            return {"ok": False, "error": f"missing or unreadable number: {e}"}
+        return {"ok": True, "status": row["status"], "zones": fitness_tests.describe(row),
+                "note": "Waiting for his OK on Today (big change to easy HR)." if row["status"] == "pending" else
+                        "Applied: the plan and Garmin workouts use it from the next update."}
     if name == "log_note":
         d = date.fromisoformat(args["date"]) if args.get("date") else today
         conn.execute(

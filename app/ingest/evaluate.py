@@ -157,18 +157,21 @@ def long_run_gate(conn, plan: dict, today: date) -> dict:
     last_day = min(today, target - timedelta(days=1))
     conds = []
 
+    from app.periodization import zones
+    zones.refresh(conn)
+    cap = zones.easy_hr_range("run")[1]
     runs = conn.execute(
         """select local_date, distance_m, avg_hr, decoupling from activities
            where sport = 'run' and local_date >= %s and local_date <= %s order by local_date""",
         (since, last_day)).fetchall()
-    bad = [r for r in runs if (r["avg_hr"] or 0) > EASY_HR_CAP
+    bad = [r for r in runs if (r["avg_hr"] or 0) > cap
            or (r["decoupling"] is not None and r["decoupling"] > overreach.DECOUPLING_WARN)]
     still_planned = conn.execute(
         """select count(*) as n from planned_workouts where sport = 'run' and status = 'planned'
            and plan_date >= %s and plan_date < %s""", (max(today, since), target)).fetchone()["n"]
     conds.append({
         "key": "return_runs_easy",
-        "label": f"Every run since {since:%b %-d} at avg HR ≤ {EASY_HR_CAP}, no drift over 5%",
+        "label": f"Every run since {since:%b %-d} at avg HR ≤ {cap}, no drift over 5%",
         "status": "fail" if bad else ("pending" if still_planned or not runs else "pass"),
         "detail": [{"date": r["local_date"], "mi": round((r["distance_m"] or 0) / MI, 2),
                     "avg_hr": r["avg_hr"], "decoupling": r["decoupling"]} for r in runs],

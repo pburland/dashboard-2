@@ -827,10 +827,12 @@ def _finish(x: Draft, returning: bool, prov: bool, place) -> None:
         x.title = title
     st = {}
     if x.sport == "run":
+        from app.periodization import zones
+        _, cap, provisional_cap = zones.easy_hr_range("run")
         st.update(pace=EASY_PACE if x.zone in ("Z1", "Z2") else "by feel, comfortably hard",
-                  hr_avg_max=HR_CAP if x.zone in ("Z1", "Z2") else None)
+                  hr_avg_max=cap if x.zone in ("Z1", "Z2") else None)
         if returning:
-            st.update(walk_if_hr_over=WALK_OVER, walk_breaks="allowed")
+            st.update(walk_if_hr_over=WALK_OVER if provisional_cap else cap + 10, walk_breaks="allowed")
         st = {k: v for k, v in st.items() if v is not None}
     if x.sport == "strength":
         st["heavy_lower"] = x.heavy_lower
