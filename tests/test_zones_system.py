@@ -19,7 +19,7 @@ def test_run_result_from_the_20_minute_lap():
     laps = [lap(0, 2400, 900, 130), lap(1, 2000, 600, 160), lap(2, 4300, 1200, 168), lap(3, 600, 300, 140)]
     r = ft.run_result(laps)
     assert r["lthr"] == 168 and not r["approx"]
-    assert r["threshold_pace_s_per_mi"] == round(1200 / (4300 / MI))
+    assert r["threshold_pace_s_per_mi"] == round(1800 / (6300 / MI))      # whole 30 min (Friel)
 
 
 def test_run_result_approximated_from_per_mile_laps():
@@ -113,8 +113,8 @@ def test_a_big_change_waits_for_ok_and_an_invalid_test_schedules_a_retest(conn):
 def test_manual_entry_and_retest_reminder(conn):
     ft.record_manual(conn, "swim_css", date(2026, 12, 7), css_s_per_100=115, unit="yd")
     assert "1:55 per 100 yd" in " ".join(zones.summary())
-    assert ft.due_notes(conn, date(2027, 1, 28)) == ["The swim test (CSS) is due around Feb 1 (8 weeks since the last one)."]
-    assert ft.due_notes(conn, date(2027, 1, 10)) == []
+    assert ft.due_notes(conn, date(2027, 1, 14)) == ["The swim test (CSS) is due around Jan 18 (6 weeks since the last one)."]
+    assert ft.due_notes(conn, date(2027, 1, 5)) == []
 
 
 @needs_db

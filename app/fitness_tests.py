@@ -2,8 +2,8 @@
 
 After each sync, a planned test session with a matched activity is read:
 
-  run LTHR   the 20-minute part of the 30-minute effort: LTHR = its average HR,
-             threshold pace = its pace. Found as a ~20-min lap (the watch workout
+  run LTHR   LTHR = average HR over the last 20 minutes of the 30-minute effort;
+             threshold pace = average pace over all 30 minutes (Friel). Found as a ~20-min lap (the watch workout
              splits 10 + 20 min); otherwise approximated from per-mile laps.
   bike FTP   the ~20-min lap with power: FTP = 95% of its average power (indoor,
              KICKR CORE), bike LTHR = 95% of its average HR.
@@ -47,6 +47,9 @@ def run_result(laps: list[dict]) -> dict | None:
     if twenty:
         lap = max(twenty, key=lambda l: l["avg_hr"] or 0)
         seg, approx = [lap], False
+        i = laps.index(lap)
+        before = laps[i - 1] if i > 0 else None
+        whole = [before, lap] if before and 480 <= (before["duration_s"] or 0) <= 720 and before["distance_m"] else [lap]
     else:
         # Per-mile laps: the fastest contiguous 27-36 min, then its last ~20 min.
         best = None
@@ -62,6 +65,7 @@ def run_result(laps: list[dict]) -> dict | None:
         if not best:
             return None
         window = laps[best[1]:best[2] + 1]
+        whole = window
         seg, t = [], 0.0
         for l in reversed(window):
             seg.insert(0, l)
@@ -69,9 +73,9 @@ def run_result(laps: list[dict]) -> dict | None:
             if t >= 19 * 60:
                 break
         approx = True
-    hr = _w(seg, "avg_hr")
-    dist = sum(l["distance_m"] or 0 for l in seg)
-    secs = sum(l["duration_s"] or 0 for l in seg)
+    hr = _w(seg, "avg_hr")                          # LTHR: the last 20 minutes
+    dist = sum(l["distance_m"] or 0 for l in whole)  # threshold pace: the whole 30 minutes (Friel)
+    secs = sum(l["duration_s"] or 0 for l in whole)
     if not hr or not dist:
         return None
     return {"lthr": round(hr), "threshold_pace_s_per_mi": round(secs / (dist / MI)), "approx": approx,

@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-VERSION = "2026-11-22.2"
+VERSION = "2026-11-23.1"
 
 
 @dataclass(frozen=True)
@@ -69,8 +69,16 @@ RULES: tuple[Rule, ...] = (
          "System default", "D"),
     Rule("weekly_ramp_max", 0.10, "fraction", "Weekly run volume grows at most this much; also the "
          "warning level for a week that did.", f"{FRIEL}; coaching convention", "C"),
-    Rule("recovery_every_weeks", 4, "weeks", "Every 4th week is lighter (3 building, 1 recovery).", FRIEL, "C"),
-    Rule("recovery_week_factor", 0.8, "fraction", "Volume of a recovery week vs the week before.", FRIEL, "C"),
+    Rule("recovery_every_weeks", 3, "weeks", "Every 3rd week is lighter (2 building, 1 recovery): Friel's "
+         "long-course plans and the post-mono default. Allow 3:1 once recovery markers are stable.", FRIEL, "C",
+         "2026-11-23: was 4 (3:1); Friel report"),
+    Rule("recovery_week_factor", 0.6, "fraction", "Volume of a recovery week vs the week before (Friel's plans "
+         "imply ~45-60%: 2-3 easy days, then short sharp sessions and a test).", FRIEL, "C",
+         "2026-11-23: was 0.8; Friel report"),
+    Rule("post_race_factor", 0.8, "fraction", "Weekly volume when training resumes after a race, vs the last "
+         "training week.", "System default", "D", "2026-11-23: split from recovery_week_factor"),
+    Rule("long_run_max_min", 180, "minutes", "No long run longer than this, whatever the distance ladder says "
+         "(Friel: IRONMAN long run 2-2.5 h, capped near 3 h).", FRIEL, "C", "2026-11-23: added; Friel report"),
     Rule("long_run_share", 0.33, "fraction", "Long run as a share of weekly run volume.",
          "Coaching convention", "C"),
     Rule("long_run_jump_warn", 0.10, "fraction", "Long run longer than the 4-week longest by this much "
@@ -81,7 +89,9 @@ RULES: tuple[Rule, ...] = (
     Rule("session_share_stop", 0.45, "fraction", "One session above this share of the week's load stops.",
          "System default", "D"),
     Rule("decoupling_warn", 0.05, "fraction", "Pace:HR decoupling that warns.", FRIEL, "C"),
-    Rule("decoupling_stop", 0.08, "fraction", "Pace:HR decoupling that stops.", "System default", "D"),
+    Rule("decoupling_stop", 0.10, "fraction", "Pace:HR decoupling that stops (Friel: 5-10% is limited endurance "
+         "or fatigue, over 10% means the effort was above aerobic threshold).", FRIEL, "C",
+         "2026-11-23: was 0.08; Friel report"),
     Rule("legs_before_long_days", 1, "days", "Heavy legs never this close before a long run or ride.",
          f"{FRIEL} (concurrent strength)", "C"),
     # ── heat ───────────────────────────────────────────────────────────────
@@ -138,8 +148,9 @@ RULES: tuple[Rule, ...] = (
          "Coggan & Allen 2019", "C"),
     Rule("bike_lthr_factor", 0.95, "fraction", "Bike LTHR = this share of the 20-minute test's average HR.",
          f"{FRIEL} (approximation)", "C"),
-    Rule("retest_weeks", 8, "weeks", "Re-test each sport this often (never in race week).",
-         "Coaching convention", "C"),
+    Rule("retest_weeks", 6, "weeks", "Re-test each sport this often, ideally inside a recovery week (never in "
+         "race week). Friel: every 4-6 weeks; bike FTP every 6-8 in Base.", FRIEL, "C",
+         "2026-11-23: was 8; Friel report"),
     Rule("test_hr_coverage", 0.9, "fraction", "A run or bike test needs heart rate on at least this share "
          "of the effort, or it doesn't count.", "System default", "D"),
     Rule("test_max_climb_m_per_mi", 30, "m per mile", "A run test with more climbing than this doesn't count "

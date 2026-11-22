@@ -50,8 +50,10 @@ LONG_SHARE = rules.value("long_run_share")
 LONG_CAP_MI = {"base": 12.0, "build": 15.0, "peak": 16.0, "race": 8.0, "return": 8.0, "transition": 3.0}
 # Longest run worth doing before a race, by distance (conservative).
 PEAK_LONG_MI = {"70.3": 12.5, "140.6": 16.0, "marathon": 20.0, "half": 12.0}
-RECOVERY_EVERY = rules.value("recovery_every_weeks")            # 3 weeks building, 1 lighter (Friel)
+RECOVERY_EVERY = rules.value("recovery_every_weeks")            # 2 weeks building, 1 lighter (Friel long course)
 RECOVERY_FACTOR = rules.value("recovery_week_factor")
+POST_RACE_FACTOR = rules.value("post_race_factor")
+LONG_RUN_MAX_MI = rules.value("long_run_max_min") / 11.0     # at the easy pace (EASY_MIN_PER_MI)
 PHASE_FACTOR = {"race": 0.7, "transition": 0.3}
 PREVIEW_FACTOR = 1.08         # previews assume the week goes to plan
 MIN_WEEK_MI = 6.0
@@ -527,7 +529,7 @@ def _size_runs(drafts: list[Draft], target: float, kind: str, hist: History, gat
         recent = [mi for d, mi in hist.runs if x.date - timedelta(days=28) <= d < x.date]
         prev = max(recent, default=0.0)
         returning = g.status is Status.RETURN
-        cap = LONG_CAP_MI.get("return" if returning else kind, 14.0)
+        cap = min(LONG_CAP_MI.get("return" if returning else kind, 14.0), LONG_RUN_MAX_MI)
         if prev:
             cap = min(cap, max(prev * MAX_RAMP, prev + overreach.LONG_RUN_JUMP_FREE_MI))
         if returning and hist.runs:
@@ -865,7 +867,7 @@ def generate(conn, first_ws: date, weeks: int = 3, factor: float = 1.0, today: d
     for w in range(weeks):
         ws = first_ws + timedelta(days=7 * w)
         if out and out[-1].kind in ("race", "transition"):
-            basis = max(basis, training_basis * RECOVERY_FACTOR)    # back to training after a race
+            basis = max(basis, training_basis * POST_RACE_FACTOR)   # back to training after a race
         wp = sync.plan_and_sync(conn, ws, basis_mi=basis, factor=factor if w == 0 else PREVIEW_FACTOR,
                                 hist=hist, today=today, cal=cal, preview=w > 0, trigger=trigger)
         out.append(wp)

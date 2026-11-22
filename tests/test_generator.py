@@ -34,8 +34,9 @@ def test_ladder_18_weeks_to_a_70_3_from_6_miles():
 def test_next_long_rules():
     assert g.next_long(10, 0, None, 12.5) == 11.0          # +10%
     assert g.next_long(4, 1, None, 12.5) == 5.0            # +1 mi floor on a short base
-    assert g.next_long(10, 3, None, 12.5) == 8.0           # 4th week: cutback
-    assert g.next_long(12.5, 3, 2, 12.5) == 12.5           # no cutback in the peak weeks
+    assert g.next_long(10, 2, None, 12.5) == 6.0           # 3rd week: cutback to 60% (Friel 2:1)
+    assert g.next_long(10, 3, None, 12.5) == 11.0          # then building again
+    assert g.next_long(12.5, 2, 2, 12.5) == 12.5           # no cutback in the peak weeks
     assert g.next_long(12.5, 5, 1, 12.5) == 7.5            # taper
 
 

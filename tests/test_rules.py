@@ -8,9 +8,9 @@ PINNED = {
     "return_long_run_cap": 0.7, "caution_readiness_below": 70, "caution_rhr_rise": 5, "caution_temp_c": 0.5,
     "checkin_caution_days": 2, "watch_rhr_rise": 5, "watch_decoupling": 0.05, "watch_hrv_sd": 0.5,
     "watch_signals_for_caution": 2, "easy_hr_cap": 145, "easy_hr_walk": 155, "weekly_ramp_max": 0.10,
-    "recovery_every_weeks": 4, "recovery_week_factor": 0.8, "long_run_share": 0.33,
+    "recovery_every_weeks": 3, "recovery_week_factor": 0.6, "post_race_factor": 0.8, "long_run_max_min": 180, "long_run_share": 0.33,
     "long_run_jump_warn": 0.10, "long_run_jump_stop": 0.20, "session_share_warn": 0.35,
-    "session_share_stop": 0.45, "decoupling_warn": 0.05, "decoupling_stop": 0.08, "legs_before_long_days": 1,
+    "session_share_stop": 0.45, "decoupling_warn": 0.05, "decoupling_stop": 0.10, "legs_before_long_days": 1,
     "heat_index_thresholds": {"easy": (85.0, 95.0), "quality": (80.0, 88.0), "long": (78.0, 85.0)},
     "heat_illness_offset_f": 5.0, "ea_deficit_floor": 30, "ea_hard_floor": 25,
     "carbs_g_per_kg": {"rest": 3.5, "lift": 3.75, "easy": 4.5, "lift_easy": 5.0, "key": 6.0,
@@ -27,7 +27,7 @@ PINNED = {
     "css_zone_offsets": {"Z1": 10, "Z2": 5, "Z3": 0, "Z4": -3, "Z5": -6},
     "power_zones": (("Z1", 0.00, 0.56), ("Z2", 0.56, 0.76), ("Z3", 0.76, 0.91), ("Z4", 0.91, 1.06),
                     ("Z5", 1.06, 1.21), ("Z6", 1.21, 9.99)),
-    "ftp_factor": 0.95, "bike_lthr_factor": 0.95, "retest_weeks": 8, "test_hr_coverage": 0.9,
+    "ftp_factor": 0.95, "bike_lthr_factor": 0.95, "retest_weeks": 6, "test_hr_coverage": 0.9,
     "test_max_climb_m_per_mi": 30, "test_min_rpe": 8, "zone_change_confirm_bpm": 8,
 }
 
