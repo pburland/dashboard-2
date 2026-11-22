@@ -58,6 +58,7 @@ class Episode:
     id: int | None = None
     expected_clear_on: date | None = None       # doctor's estimate; never ends a hold
     return_days: int | None = None              # override for the return length
+    return_paused: frozenset = frozenset()      # trip days inside the return: they don't count
 
 
 @dataclass(frozen=True)
@@ -68,6 +69,7 @@ class MorningSignals:
     resting_hr_baseline: int | None = None
     temp_deviation_c: float | None = None     # Oura body-temperature deviation
     checkin_reason: str | None = None         # a recent bad/pain check-in (app/checkins.py)
+    watch_reason: str | None = None           # two relapse-watch signals together (app/health/watch.py)
 
 
 @dataclass(frozen=True)
@@ -97,6 +99,8 @@ def caution_reasons(s: MorningSignals) -> list[str]:
         reasons.append(f"body temperature +{s.temp_deviation_c:.1f}°C vs baseline — possible illness, log it if you feel unwell")
     if s.checkin_reason:
         reasons.append(s.checkin_reason)
+    if s.watch_reason:
+        reasons.append(s.watch_reason)
     return reasons
 
 
@@ -140,11 +144,27 @@ def begin_return(episode: Episode, on: date) -> Episode:
                    return_ends_on=on + timedelta(days=length - 1))
 
 
+def extend_for_trips(start: date, ends_on: date, trip_days: set[date]) -> tuple[date, frozenset]:
+    """Push the end of a return back one day for every trip day inside it
+    (a return interrupted by travel resumes where it stopped)."""
+    end, paused = ends_on, set()
+    d = start
+    while d <= end:
+        if d in trip_days:
+            paused.add(d)
+            end += timedelta(days=1)
+        d += timedelta(days=1)
+    return end, frozenset(paused)
+
+
 def return_volume(episode: Episode, as_of: date) -> float:
-    """Linear ramp from RETURN_START_VOLUME to RETURN_END_VOLUME."""
+    """Linear ramp from RETURN_START_VOLUME to RETURN_END_VOLUME, counting
+    only days at home (trip days pause the ramp)."""
     assert episode.return_started_on and episode.return_ends_on
-    span = (episode.return_ends_on - episode.return_started_on).days or 1
-    progress = min(1.0, max(0.0, (as_of - episode.return_started_on).days / span))
+    start, paused = episode.return_started_on, episode.return_paused
+    span = ((episode.return_ends_on - start).days - len(paused)) or 1
+    done = (as_of - start).days - sum(1 for d in paused if d < as_of)
+    progress = min(1.0, max(0.0, done / span))
     return round(RETURN_START_VOLUME + (RETURN_END_VOLUME - RETURN_START_VOLUME) * progress, 2)
 
 

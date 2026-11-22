@@ -109,13 +109,16 @@ def profile(conn) -> dict:
 def morning_signals(conn, today: date) -> MorningSignals:
     """Oura's morning numbers plus any recent bad/pain check-in."""
     from app import checkins
+    from app.health import watch
     why = checkins.reason_for(conn, today)
+    watched = watch.load(conn, today).caution
     r = conn.execute("select * from recovery where day <= %s order by day desc limit 1", (today,)).fetchone()
     if not r or r["day"] < today - timedelta(days=1):
-        return MorningSignals(resting_hr_baseline=profile(conn).get("resting_hr_baseline"), checkin_reason=why)
+        return MorningSignals(resting_hr_baseline=profile(conn).get("resting_hr_baseline"), checkin_reason=why,
+                              watch_reason=watched)
     return MorningSignals(readiness=r["readiness"], resting_hr=r["resting_hr"],
                           resting_hr_baseline=profile(conn).get("resting_hr_baseline"),
-                          temp_deviation_c=r["temp_deviation_c"], checkin_reason=why)
+                          temp_deviation_c=r["temp_deviation_c"], checkin_reason=why, watch_reason=watched)
 
 
 def heat_checks(conn, today: date, hours: list[heat.HourlyWeather], tz) -> int:

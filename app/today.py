@@ -27,6 +27,8 @@ def build(conn, today: date, next_days: int = 4, checkin_id: int | None = None) 
         phase = {"error": str(e)}
 
     signals = evaluate.morning_signals(conn, today)
+    from app.health import watch
+    watched = watch.load(conn, today)
     g = health_gate(db.open_episode(conn, today), signals, today)
 
     plans = conn.execute(
@@ -108,7 +110,8 @@ def build(conn, today: date, next_days: int = 4, checkin_id: int | None = None) 
         "where": {"place": here.name, "away": here.away, "sports": list(here.sports or []), "note": here.note},
         "health": {"status": g.status.value, "prescriptions_allowed": g.prescriptions_allowed,
                    "intensity_ceiling": g.intensity_ceiling, "volume_multiplier": g.volume_multiplier,
-                   "reasons": list(g.reasons)},
+                   "reasons": list(g.reasons), "watch": list(watched.notes),
+                   "watch_learning_hrv": watched.learning_hrv},
         "readiness": rec and {"day": rec["day"], "readiness": rec["readiness"], "sleep_score": rec["sleep_score"],
                               "resting_hr": rec["resting_hr"], "hrv_ms": rec["hrv_ms"],
                               "temp_deviation_c": rec["temp_deviation_c"],

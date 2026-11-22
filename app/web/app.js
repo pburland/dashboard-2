@@ -309,7 +309,9 @@ function fuelCard(f, b) {
 function statusLine(h, phase) {
   const cls = {clear: 'blue', caution: 'warn', hold: 'stop', return: 'ok'}[h.status];
   const label = {clear: phase.name || 'Training', caution: 'Caution today', hold: 'Health hold', return: 'Return to training'}[h.status];
-  return `<div class="statusline"><span class="pill ${cls}">● ${esc(label)}</span><span class="muted">${esc(h.reasons[0] || '')}</span></div>`;
+  const watch = h.reasons.some(r => r.startsWith('Easing off')) ? [] : (h.watch || []);
+  return `<div class="statusline"><span class="pill ${cls}">● ${esc(label)}</span><span class="muted">${esc(h.reasons[0] || '')}</span></div>` +
+    watch.map(w => `<div class="n4m" style="margin:4px 0 8px">${esc(w)}</div>`).join('');
 }
 
 function renderToday(t, cached) {

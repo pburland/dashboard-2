@@ -20,7 +20,7 @@ def fake_send(conn, sub, msg, contact):
 def conn(monkeypatch):
     SENT.clear()
     monkeypatch.setattr("app.integrations.webpush.send", fake_send)
-    with _fresh_db(monkeypatch, None) as c:
+    with _fresh_db(monkeypatch, "018_garmin_push_on.sql") as c:
         c.execute("""insert into push_subscriptions (endpoint, keys) values ('https://web.push.apple.com/x',
                      '{"p256dh":"x","auth":"y"}')""")
         c.commit()

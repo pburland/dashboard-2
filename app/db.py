@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import threading
 from contextlib import contextmanager
-from datetime import date
+from datetime import date, timedelta
 from typing import Iterator
 
 import psycopg
@@ -71,10 +71,18 @@ def open_episode(conn: psycopg.Connection, as_of: date | None = None) -> Episode
             (as_of, as_of)).fetchone()
     if not r:
         return None
+    ends_on, paused = r["return_ends_on"], frozenset()
+    if r["return_started_on"] and ends_on:
+        from app.health.state import extend_for_trips
+        trips = conn.execute(
+            """select start_date, end_date from travel where end_date >= %s""", (r["return_started_on"],)).fetchall()
+        days = {t["start_date"] + timedelta(days=i) for t in trips
+                for i in range((t["end_date"] - t["start_date"]).days + 1)}
+        ends_on, paused = extend_for_trips(r["return_started_on"], ends_on, days)
     return Episode(
         id=r["id"], kind=r["kind"], started_on=r["started_on"], reason=r["reason"],
         criteria_met={k: date.fromisoformat(v) for k, v in (r["criteria_met"] or {}).items()},
-        return_started_on=r["return_started_on"], return_ends_on=r["return_ends_on"],
+        return_started_on=r["return_started_on"], return_ends_on=ends_on, return_paused=paused,
         closed_on=r["closed_on"], expected_clear_on=r.get("expected_clear_on"),
         return_days=r.get("return_days"),
     )

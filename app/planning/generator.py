@@ -235,13 +235,16 @@ def day_gate(conn, today: date, since: date):
     clearance on the expected date for future days) plus recent check-ins.
     The generator, chat edits and rebases all judge days with this."""
     from app import checkins
+    from app.health import watch
     episode = db.open_episode(conn, today)
     recent_checkins = checkins.recent(conn, since - timedelta(days=checkins.CAUTION_DAYS))
+    watched = watch.load(conn, today).caution          # applies to today and tomorrow
 
     def gate_for(d: date):
         ep = provisional(episode, d) if d > today else episode
         why = checkins.caution_reason(recent_checkins, d) if d >= today else None
-        return gate(ep, MorningSignals(checkin_reason=why), d)
+        w = watched if today <= d < today + timedelta(days=watch.CAUTION_DAYS) else None
+        return gate(ep, MorningSignals(checkin_reason=why, watch_reason=w), d)
     return gate_for
 
 

@@ -120,6 +120,13 @@ def conn(monkeypatch):
 
 
 @pytest.fixture
+def conn_hold(monkeypatch):
+    """Seeds up to the Nov 2026 Garmin push: the mono hold not yet cleared in the data."""
+    with _fresh_db(monkeypatch, "018_garmin_push_on.sql") as c:
+        yield c
+
+
+@pytest.fixture
 def conn_now(monkeypatch):
     """Every seed applied: the current plan."""
     with _fresh_db(monkeypatch, None) as c:
@@ -215,20 +222,20 @@ def test_today_view(conn):
 
 
 @needs_db
-def test_mono_hold_rebase(conn_now):
+def test_mono_hold_rebase(conn_hold):
     from app import db, today as view, travel
     from app.periodization.phases import validate_phases
-    validate_phases(db.load_phases(conn_now))
-    t = view.build(conn_now, date(2026, 10, 5))
+    validate_phases(db.load_phases(conn_hold))
+    t = view.build(conn_hold, date(2026, 10, 5))
     assert t["health"]["status"] == "hold" and not t["sessions"]
     assert t["phase"]["name"] == "Health hold (mono)"
     assert t["phase"]["start"] == date(2026, 9, 15)                 # one hold from Sep 15
     names = [r["name"] for r in t["races"]]
     assert names == ["IRONMAN Lake Placid", "IRONMAN 70.3 Puerto Rico"]   # A race first; MCM and Jan marathon dropped
     # The early "clearance" is superseded: Sep 25 is inside the mono hold.
-    assert view.build(conn_now, date(2026, 9, 25))["health"]["status"] == "hold"
+    assert view.build(conn_hold, date(2026, 9, 25))["health"]["status"] == "hold"
     assert t["fuel"]["kcal"] == round(1850 * 1.35, -1) and t["body"]["bf_pct"] == 19.4   # hold: maintenance
-    stops = travel.load(conn_now)
+    stops = travel.load(conn_hold)
     assert travel.place_for(stops, date(2026, 11, 12)).name == "Tokyo"
     assert travel.place_for(stops, date(2026, 11, 24)).name == "Home"
 
@@ -246,10 +253,10 @@ def _history(conn, start=date(2026, 7, 27), end=date(2026, 9, 13)):
 
 
 @needs_db
-def test_generator_respects_hold_return_and_travel(conn_now):
+def test_generator_respects_hold_return_and_travel(conn_hold):
     from app.planning import generator
-    _history(conn_now)
-    weeks = generator.generate(conn_now, date(2026, 10, 5), weeks=8, today=date(2026, 10, 4))
+    _history(conn_hold)
+    weeks = generator.generate(conn_hold, date(2026, 10, 5), weeks=8, today=date(2026, 10, 4))
     assert weeks[0].drafts == [] and weeks[0].suppressed          # inside the mono hold
     drafts = [x for w in weeks for x in w.drafts]
     assert min(x.date for x in drafts) == date(2026, 10, 15)      # nothing before expected clearance
@@ -263,7 +270,7 @@ def test_generator_respects_hold_return_and_travel(conn_now):
     trip = [x for x in drafts if date(2026, 11, 7) <= x.date <= date(2026, 11, 21)]
     assert trip and all(x.sport == "run" or x.kind == "bodyweight" for x in trip)
     assert all("brief" in x.structure for x in drafts)
-    rows = conn_now.execute("select count(*) n, bool_and(structure ? 'preview') p from planned_workouts "
+    rows = conn_hold.execute("select count(*) n, bool_and(structure ? 'preview') p from planned_workouts "
                             "where source = 'generator' and plan_date >= '2026-10-12'").fetchone()
     assert rows["n"] == len(drafts) and rows["p"]       # weeks after the first are previews
 
@@ -280,17 +287,17 @@ def test_generator_is_idempotent(conn_now):
 
 
 @needs_db
-def test_weekly_report_saves_and_replans(conn_now, monkeypatch):
+def test_weekly_report_saves_and_replans(conn_hold, monkeypatch):
     from app import reports
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    _history(conn_now)
-    r = reports.build(conn_now, date(2026, 9, 28), today=date(2026, 10, 4))
+    _history(conn_hold)
+    r = reports.build(conn_hold, date(2026, 9, 28), today=date(2026, 10, 4))
     assert r["summary"]["health"]["status"] == "hold"
     assert r["summary"]["decision"]["factor"] == 1.0
     assert "Narrative unavailable" in r["narrative"] and r["model"] is None
-    assert reports.list_reports(conn_now)[0]["week_start"] == date(2026, 9, 28)
+    assert reports.list_reports(conn_hold)[0]["week_start"] == date(2026, 9, 28)
     # Re-planned: the next week is in the hold (empty), previews follow clearance.
-    n = conn_now.execute("select count(*) n from planned_workouts where source = 'generator'").fetchone()["n"]
+    n = conn_hold.execute("select count(*) n from planned_workouts where source = 'generator'").fetchone()["n"]
     assert n > 0 and r["summary"]["next_week"] == []
     # Computed sections follow the narrative: weight check, bench checkpoint, next week's weights.
     assert "**Body weight**" in r["narrative"] and "**Bench**" in r["narrative"]
@@ -310,7 +317,7 @@ def test_report_decision_rules():
 
 
 @needs_db
-def test_pat_gpt_logs_notes_and_can_open_but_not_close_a_hold(conn_now, monkeypatch):
+def test_pat_gpt_logs_notes_and_can_open_but_not_close_a_hold(conn_hold, monkeypatch):
     from types import SimpleNamespace as NS
     from app import chat, llm
     calls = []
@@ -329,27 +336,27 @@ def test_pat_gpt_logs_notes_and_can_open_but_not_close_a_hold(conn_now, monkeypa
     monkeypatch.setattr(llm, "client", lambda: Fake)
     monkeypatch.setattr(llm, "model", lambda: "test-model")
     monkeypatch.setattr("app.clock.today", lambda: date(2026, 10, 5))
-    r = chat.ask(conn_now, "Feeling rough, sore throat")
+    r = chat.ask(conn_hold, "Feeling rough, sore throat")
     assert r["reply"].startswith("Noted") and r["actions"][0]["result"]["saved"]
     assert "DATA (JSON" in calls[0]["system"][1]["text"] and '"status": "hold"' in calls[0]["system"][1]["text"]
-    assert conn_now.execute("select type, source from weekly_notes").fetchone() == {"type": "illness", "source": "chat"}
+    assert conn_hold.execute("select type, source from weekly_notes").fetchone() == {"type": "illness", "source": "chat"}
     # A second turn continues the conversation with its history.
-    chat.ask(conn_now, "thanks", r["conversation_id"])
+    chat.ask(conn_hold, "thanks", r["conversation_id"])
     assert [m["role"] for m in calls[-1]["messages"]] == ["user", "assistant", "user"]
-    assert len(chat.messages(conn_now, r["conversation_id"])) == 4
+    assert len(chat.messages(conn_hold, r["conversation_id"])) == 4
     # A hold can't be opened twice; there is no tool to close one.
-    assert chat.run_tool(conn_now, "start_health_hold", {"kind": "illness", "reason": "x"}, date(2026, 10, 5))["opened"] is False
+    assert chat.run_tool(conn_hold, "start_health_hold", {"kind": "illness", "reason": "x"}, date(2026, 10, 5))["opened"] is False
     names = {t["name"] for t in chat.TOOLS}
     assert "start_health_hold" in names and not any("clear" in n or "end_hold" in n for n in names)
 
 
 @needs_db
-def test_old_report_never_plans_into_the_hold_or_the_past(conn_now, monkeypatch):
+def test_old_report_never_plans_into_the_hold_or_the_past(conn_hold, monkeypatch):
     from app import reports
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    _history(conn_now)
-    reports.build(conn_now, date(2026, 9, 21), today=date(2026, 10, 4))     # a late report
-    rows = conn_now.execute("select min(plan_date) d from planned_workouts where source = 'generator'").fetchone()
+    _history(conn_hold)
+    reports.build(conn_hold, date(2026, 9, 21), today=date(2026, 10, 4))     # a late report
+    rows = conn_hold.execute("select min(plan_date) d from planned_workouts where source = 'generator'").fetchone()
     assert rows["d"] >= date(2026, 10, 15)          # nothing before expected clearance, nothing in the past
 
 
