@@ -159,7 +159,7 @@ def build(conn, ws: date, *, replan: bool = True, today: date | None = None) -> 
     from app import bodycomp, checkpoints, strength
     weights = strength.for_week(conn, first)
     weigh = bodycomp.check(conn, ws, phase_kind=(plans[0].kind if plans else None))
-    bench = strength.bench_checkpoint(strength.for_week(conn, ws), today)
+    bench = strength.bench_checkpoint(strength.for_week(conn, ws), today, strength.lift_checkpoints(conn))
     # Computed lines, not written by the model.
     cp = checkpoints.check(conn, ws + timedelta(days=6))
     summary["checkpoint"] = cp

@@ -108,3 +108,15 @@ def test_trend_restarts_after_a_layoff_and_follows_a_steady_climb():
     assert series[2] == s.e1rm(115, 5, 7)
     # ... and a repeated climb isn't damped as noise: within ~10% of the latest set.
     assert t > 0.9 * s.e1rm(145, 5, 7)
+
+
+@needs_db
+def test_lift_checkpoints_come_from_the_confirmed_goals(conn):
+    goals = s.lift_checkpoints(conn)
+    labels = [g[0] for g in goals]
+    assert labels[:2] == ["Bench", "Squat"]
+    bench = dict(goals[0][2])
+    assert bench[date(2027, 7, 25)] == 185
+    _log(conn, date(2026, 12, 1), "Bench Press (Barbell)", [(135, 5, 8)])
+    text = s.bench_checkpoint(s.recommend(conn, date(2026, 12, 7), phase_kind="base"), date(2026, 12, 7), goals)
+    assert "**Bench**" in text and "160 by Dec 31" in text and "**Squat**" in text

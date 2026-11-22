@@ -34,8 +34,9 @@ CUT_CAP_LB = 5.0
 REENTRY = (0.75, 0.85, 0.925, 0.975)
 GAP_DAYS = 21
 # Bench e1RM checkpoints (strength report, Oct 2026): date -> smoothed trend to reach.
-BENCH_CHECKPOINTS = [(date(2026, 11, 24), 170), (date(2026, 12, 15), 185), (date(2027, 3, 1), 195),
-                     (date(2027, 7, 25), 190)]
+# Fallback only; the checkpoints of record live in goals.target (seed 020).
+BENCH_CHECKPOINTS = [(date(2026, 12, 31), 160), (date(2027, 3, 1), 175), (date(2027, 5, 1), 180),
+                     (date(2027, 7, 25), 185)]
 
 
 @dataclass(frozen=True)
@@ -406,14 +407,30 @@ def attach(conn, days: list[dict]) -> None:
                 s["structure"] = dict(s.get("structure") or {}) | {"exercises": rows}
 
 
-def bench_checkpoint(plan: Plan, today: date) -> str:
-    """One line: the bench trend against the next checkpoint."""
-    t = plan.trends.get("Bench Press (Barbell)")
-    nxt = next(((d, v) for d, v in BENCH_CHECKPOINTS if d >= today), None)
-    if not nxt:
-        return ""
-    d, v = nxt
-    if t is None:
-        return f"**Bench**: next checkpoint {v} lb e1RM by {d:%b %-d}; log RPE so the trend can be computed."
-    status = "on track" if t >= v else f"{v - t:.0f} lb to go"
-    return f"**Bench**: trend e1RM {t:.0f} lb; checkpoint {v} by {d:%b %-d}: {status}."
+def lift_checkpoints(conn) -> list[tuple[str, str, list[tuple[date, float]]]]:
+    """(label, Hevy exercise, checkpoints) for each active strength goal that has them."""
+    out = []
+    for g in conn.execute("select name, target from goals where kind = 'strength' and status = 'active' "
+                          "order by id").fetchall():
+        t = g["target"] or {}
+        if t.get("exercise") and t.get("checkpoints"):
+            label = t["exercise"].split(" (")[0].replace(" Press", "")
+            out.append((label, t["exercise"], [(date.fromisoformat(d), v) for d, v in t["checkpoints"]]))
+    return out or [("Bench", "Bench Press (Barbell)", BENCH_CHECKPOINTS)]
+
+
+def bench_checkpoint(plan: Plan, today: date, goals: list | None = None) -> str:
+    """One line per lift: its trend against the next checkpoint (goals from lift_checkpoints)."""
+    lines = []
+    for label, exercise, points in goals or [("Bench", "Bench Press (Barbell)", BENCH_CHECKPOINTS)]:
+        nxt = next(((d, v) for d, v in points if d >= today), None)
+        if not nxt:
+            continue
+        d, v = nxt
+        t = plan.trends.get(exercise)
+        if t is None:
+            lines.append(f"**{label}**: next checkpoint {v} lb e1RM by {d:%b %-d}; log RPE so the trend can be computed.")
+        else:
+            status = "on track" if t >= v else f"{v - t:.0f} lb to go"
+            lines.append(f"**{label}**: trend e1RM {t:.0f} lb; checkpoint {v} by {d:%b %-d}: {status}.")
+    return "\n".join(lines)
