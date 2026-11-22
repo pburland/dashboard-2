@@ -1,11 +1,11 @@
-"""The coming week's planned workouts as a calendar feed (.ics) on its own calendar.
+"""Approved weeks' workouts as a calendar feed (.ics) on its own calendar.
 
 He subscribes to the feed's address once (Google Calendar "From URL", or iPhone
 Settings → Calendar → Subscribed Calendars). It shows up as a separate
-"Training" calendar he can hide or colour, apart from his normal one, and it
-follows every re-plan by itself. Only the next 7 days are in it, so a change in
-the plan never leaves weeks of stale events behind. Events are all-day and carry
-no alerts, so they never notify.
+"Training" calendar he can hide or colour, apart from his normal one. Only weeks
+he approved on Sunday are in it (app/approval.py), each session as a time block
+at the suggested best time (all-day only if no time could be found). Changes the
+app makes inside an approved week follow by themselves. No alerts, ever.
 
 The address carries a key derived from ADMIN_TOKEN (not the token itself), so
 sharing a calendar link never gives away the app's password.
@@ -16,7 +16,7 @@ import hashlib
 import hmac
 from datetime import date, datetime, timedelta, timezone
 
-DAYS = 7
+DAYS = 14                       # look-ahead; only approved weeks inside it are shown
 NAME = "Training"
 ICON = {"run": "🏃", "bike": "🚴", "swim": "🏊", "strength": "🏋️", "brick": "🔁"}
 
@@ -58,20 +58,44 @@ def _description(s: dict) -> str:
     return "\n\n".join(p for p in parts if p)
 
 
+def _utc(iso: str) -> str:
+    return datetime.fromisoformat(iso).astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
 def build(conn, today: date, days: int = DAYS) -> str:
-    rows = conn.execute(
-        """select id, plan_date, sport, title, duration_min, structure, notes from planned_workouts
+    from app import approval
+    end = today + timedelta(days=days - 1)
+    weeks = approval.approved_weeks(conn, today, end)
+    rows = [r for r in conn.execute(
+        """select id, plan_date, sport, title, duration_min, max_zone, is_long, structure, notes from planned_workouts
            where plan_date between %s and %s and status = 'planned' order by plan_date, id""",
-        (today, today + timedelta(days=days - 1))).fetchall()
+        (today, end)).fetchall() if approval.week_of(r["plan_date"]) in weeks]
+    live = {}
+    missing = [r for r in rows if str(r["id"]) not in weeks[approval.week_of(r["plan_date"])]["sessions"]]
+    if missing:                                    # changed after approval: work out a time now
+        from app.planning import timing
+        days_ = {}
+        for r in missing:
+            days_.setdefault(r["plan_date"], []).append(
+                {"id": r["id"], "sport": r["sport"], "duration_min": r["duration_min"], "status": "planned",
+                 "max_zone": r["max_zone"], "is_long": r["is_long"]})
+        try:
+            timing.annotate(conn, [{"date": d, "sessions": v} for d, v in days_.items()], today)
+        except Exception:
+            pass
+        live = {s["id"]: s.get("best_time") or {} for v in days_.values() for s in v}
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//training app//workouts//EN", "CALSCALE:GREGORIAN",
-             "METHOD:PUBLISH", f"X-WR-CALNAME:{NAME}", "X-WR-CALDESC:The coming week's planned workouts",
+             "METHOD:PUBLISH", f"X-WR-CALNAME:{NAME}", "X-WR-CALDESC:Your approved training weeks",
              "REFRESH-INTERVAL;VALUE=DURATION:PT1H", "X-PUBLISHED-TTL:PT1H"]
     for s in rows:
         d = s["plan_date"]
-        lines += ["BEGIN:VEVENT", f"UID:tc-{s['id']}@training-app", f"DTSTAMP:{stamp}",
-                  f"DTSTART;VALUE=DATE:{d:%Y%m%d}", f"DTEND;VALUE=DATE:{d + timedelta(days=1):%Y%m%d}",
+        snap = weeks[approval.week_of(d)]["sessions"].get(str(s["id"])) or {}
+        t = snap if snap.get("date") == d.isoformat() else (live.get(s["id"]) or {})
+        when = ([f"DTSTART:{_utc(t['start'])}", f"DTEND:{_utc(t['end'])}"] if t.get("start") and t.get("end")
+                else [f"DTSTART;VALUE=DATE:{d:%Y%m%d}", f"DTEND;VALUE=DATE:{d + timedelta(days=1):%Y%m%d}"])
+        lines += ["BEGIN:VEVENT", f"UID:tc-{s['id']}@training-app", f"DTSTAMP:{stamp}", *when,
                   f"SUMMARY:{_esc(_summary(s))}", f"DESCRIPTION:{_esc(_description(s))}",
-                  "TRANSP:TRANSPARENT", "END:VEVENT"]
+                  "TRANSP:OPAQUE" if t.get("start") else "TRANSP:TRANSPARENT", "END:VEVENT"]
     lines.append("END:VCALENDAR")
     return "\r\n".join(_fold(x) for x in lines) + "\r\n"

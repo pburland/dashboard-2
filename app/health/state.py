@@ -59,7 +59,7 @@ class Episode:
     id: int | None = None
     expected_clear_on: date | None = None       # doctor's estimate; never ends a hold
     return_days: int | None = None              # override for the return length
-    return_paused: frozenset = frozenset()      # trip days inside the return: they don't count
+    return_paused: frozenset = frozenset()      # no-training travel days inside the return: they don't count
 
 
 @dataclass(frozen=True)

@@ -33,6 +33,7 @@ def conn(monkeypatch):
         c.execute("""update health_episodes set criteria_met = '{"physician_clearance":"2026-10-15",
                      "fever_free_48h":"2026-10-15","rhr_near_baseline_3d":"2026-10-15"}',
                      return_started_on = '2026-10-15', return_ends_on = '2026-11-04'""")
+        c.execute("insert into plan_approvals (week_start) values (%s)", (MON,))     # Patrick approved the week
         yield c
 
 
@@ -95,3 +96,12 @@ def test_one_failure_does_not_block_the_rest(conn):
     _plan(conn, MON + timedelta(days=2), "bike", "Easy ride (Z2)", 50)
     r = gp.sync(conn, MON, client=Flaky())
     assert r["created"] == 1 and len(r["errors"]) == 1 and "Garmin said no" in r["errors"][0]
+
+
+@needs_db
+def test_unapproved_weeks_are_not_sent(conn):
+    g = FakeGarmin()
+    _plan(conn, MON + timedelta(days=8), "run", "Easy run", 40)          # next week, not approved
+    assert gp.sync(conn, MON + timedelta(days=6), client=g)["created"] == 0 and not g.workouts
+    conn.execute("insert into plan_approvals (week_start) values (%s)", (MON + timedelta(days=7),))
+    assert gp.sync(conn, MON + timedelta(days=6), client=g)["created"] == 1

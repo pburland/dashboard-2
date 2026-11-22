@@ -80,10 +80,14 @@ from tests.test_ingest import needs_db, conn_now  # noqa: E402,F401  (fixture)
 def test_return_restarts_nov_23_and_trips_extend_it(conn_now):  # noqa: F811
     from app import db
     ep = db.open_episode(conn_now, date(2026, 11, 23))
-    assert ep.return_started_on == date(2026, 11, 23) and ep.return_ends_on == date(2026, 12, 13)
+    assert ep.return_started_on == date(2026, 11, 23) and ep.return_ends_on == date(2026, 12, 14)  # Nov 28 drive
     g = state.gate(ep, state.MorningSignals(), date(2026, 11, 23))
     assert g.status is state.Status.RETURN and g.volume_multiplier == 0.5 and g.intensity_ceiling == "Z2"
+    # Trips where he can still train don't pause it (Connecticut, seed 022, ran Nov 22-27) ...
     conn_now.execute("""insert into travel (start_date, end_date, place, lat, lng, tz_name, sports)
-                        values ('2026-12-04', '2026-12-06', 'Boston', 42.36, -71.06, 'America/New_York', '{run}')""")
+                        values ('2026-12-04', '2026-12-04', 'Boston', 42.36, -71.06, 'America/New_York', '{run}')""")
+    # ... days with no training do: the Nov 28 drive, and these two flight days.
+    conn_now.execute("""insert into travel (start_date, end_date, place, lat, lng, tz_name, sports)
+                        values ('2026-12-05', '2026-12-06', 'Flights', 42.36, -71.06, 'America/New_York', '{}')""")
     assert db.open_episode(conn_now, date(2026, 11, 23)).return_ends_on == date(2026, 12, 16)
     assert watch.load(conn_now, date(2026, 11, 23)).caution is None

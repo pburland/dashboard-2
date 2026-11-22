@@ -120,7 +120,12 @@ def sync(conn, today: date, days: int = DAYS, client=None) -> dict:
         return out | {"skipped": f"starts {cfg['from']}"}
     from app.periodization import zones
     zones.refresh(conn)
-    want = {r["id"]: r for r in _planned(conn, start, end)}
+    rows = _planned(conn, start, end)
+    if cfg.get("approval", True):                 # only weeks Patrick approved (Sunday prompt)
+        from app import approval
+        ok = approval.approved_weeks(conn, start, end)
+        rows = [r for r in rows if approval.week_of(r["plan_date"]) in ok]
+    want = {r["id"]: r for r in rows}
     have = {r["planned_workout_id"]: r for r in conn.execute(
         "select * from garmin_pushed where plan_date between %s and %s", (start, end)).fetchall()}
     # Also anything we pushed for a session that has since moved out of the window or was superseded.

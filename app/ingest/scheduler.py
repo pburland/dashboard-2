@@ -94,6 +94,11 @@ def _weekly(ws) -> None:
         reports.build(conn, ws)
         notify.report_ready(conn, ws)
         try:
+            from app import approval, clock
+            notify.approval_ready(conn, approval.week_to_approve(clock.today()))
+        except Exception:
+            log.exception("approval notification failed")
+        try:
             from app import clock
             from app.integrations import garmin_push
             log.warning("garmin push after the weekly plan: %s", garmin_push.sync(conn, clock.today()))

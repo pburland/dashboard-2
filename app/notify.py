@@ -31,7 +31,7 @@ EVENING_AT = time(20, 30)
 MORNING_AT = time(5, 45)
 CLEARANCE_AT = time(9, 0)
 CLEARANCE_EVERY_DAYS = 3
-KINDS = ("workout", "plan", "safety", "checkin", "report", "clearance")
+KINDS = ("workout", "plan", "safety", "checkin", "report", "clearance", "approval")
 
 
 # ── queue ────────────────────────────────────────────────────────────────
@@ -237,6 +237,21 @@ def clearance(conn, today: date) -> int:
 def report_ready(conn, week_start: date) -> None:
     queue(conn, "report", "Your weekly report is ready", "See how the week went and what changes next week.",
           url="/?tab=reports", dedupe=f"report:{week_start}")
+    conn.commit()
+
+
+def approval_ready(conn, week_start: date) -> None:
+    """Sunday: next week's plan is ready to approve (then it goes to Garmin and the calendar)."""
+    from app import approval
+    if approval.approved(conn, week_start):
+        return
+    n = conn.execute("select count(*) as n from planned_workouts where plan_date between %s and %s "
+                     "and status = 'planned'", (week_start, week_start + timedelta(days=6))).fetchone()["n"]
+    if not n:
+        return
+    queue(conn, "approval", f"Approve the week of {week_start:%b %-d}",
+          f"{n} sessions with suggested times. Approve to send them to your Garmin and Training calendar.",
+          url="/?approve=1", dedupe=f"approval:{week_start}")
     conn.commit()
 
 

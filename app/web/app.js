@@ -585,8 +585,9 @@ $('calbtn').onclick = async () => {
   show('<div class="muted">Loading…</div>');
   try {
     const {data} = await api('/api/calendar/feed');
-    show(`<p>Your planned workouts for the next ${data.days} days, on a separate "Training" calendar. It updates
-      itself when the plan changes, and it never sends alerts. Subscribe once:</p>
+    show(`<p>The weeks you approve, on a separate "Training" calendar: each workout as a time block at its
+      suggested time. It updates itself when the plan changes inside an approved week, and it never sends alerts.
+      Subscribe once:</p>
       <p><b>iPhone:</b> Settings → Calendar → Accounts → Add Account → Other → Add Subscribed Calendar → paste the
       address → Next → Save. Then in Settings → Calendar → Accounts → Subscribed Calendars → Training, set Fetch to Hourly.</p>
       <p><b>Google Calendar</b> (on a computer): Other calendars → + → From URL → paste → Add calendar. Google refreshes
@@ -604,10 +605,37 @@ $('calbtn').onclick = async () => {
   }
 };
 
+// ── weekly approval: Garmin + Training calendar ──────────────────────────
+async function loadApproval() {
+  try {
+    const {data} = await api('/api/approval');
+    $('approvalcard')?.remove();
+    if (data.approved_at || !data.sessions.length) return;
+    const day = d => fmt(d, {weekday: 'short', month: 'short', day: 'numeric'});
+    const rows = data.sessions.map(s => `<li><b>${esc(day(s.date))}</b> · ${esc(s.label || 'any time')} · ${esc(s.title)}${s.duration_min ? ` (${Math.round(s.duration_min)} min)` : ''}</li>`).join('');
+    $('today').insertAdjacentHTML('afterbegin', `<section class="card" id="approvalcard"><div class="label">Approve the week of ${esc(fmt(data.week_start, {month: 'short', day: 'numeric'}))}</div>
+      <ul class="crit" style="margin:6px 0 10px">${rows}</ul>
+      ${data.timing_note ? `<div class="n4m">Times: ${esc(data.timing_note)}</div>` : ''}
+      <button class="primary-btn" id="approvebtn">Approve: send to Garmin + calendar</button>
+      <div class="n4m" id="approvemsg">Want changes first? Tell Coach (e.g. "move Thursday's run to Friday"), then approve.</div></section>`);
+    $('approvebtn').onclick = async () => {
+      $('approvemsg').textContent = 'Sending…';
+      try {
+        const r = await post('/api/approval', {week_start: String(data.week_start)}, 120000);
+        const g = r.garmin || {};
+        $('approvemsg').textContent = `Approved: ${r.sessions} sessions on your Training calendar` +
+          (g.skipped ? ` (Garmin: ${g.skipped}).` : g.errors && g.errors.length ? `. Garmin had a problem: ${g.errors[0]}` : ', and runs, rides and swims on your Garmin.');
+        $('approvebtn').remove();
+      } catch (e) { $('approvemsg').textContent = e.why || e.message; }
+    };
+  } catch (e) { /* the approval card is optional; Today still works */ }
+}
+
 // ── phone notifications ─────────────────────────────────────────────────
 const NOTIF_TYPES = [['workout', 'Tomorrow\'s workout (8:30 PM)'], ['checkin', '"How was it?" after a session'],
   ['safety', 'Safety (readiness, heart rate, heat)'], ['plan', 'Plan changes and changes to confirm'],
-  ['report', 'Weekly report ready'], ['clearance', 'Clearance reminder (during a hold)']];
+  ['report', 'Weekly report ready'], ['approval', 'Sunday: approve next week (Garmin + calendar)'],
+  ['clearance', 'Clearance reminder (during a hold)']];
 const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
 const isStandalone = () => window.navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
 function keyBytes(b64) {
@@ -716,6 +744,7 @@ async function start() {
     $('signin').hidden = true; $('app').hidden = false;
     $('hdrdate').dataset.iso = String(data.today);
     renderToday(data, cached);
+    if (!cached) loadApproval();
     if (qs.get('tab')) document.querySelector(`.tabs button[data-tab="${qs.get('tab')}"]`)?.click();
     if (why) $('sync').textContent = `${why}. ` + $('sync').textContent;
     if (cached) {

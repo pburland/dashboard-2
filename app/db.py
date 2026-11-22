@@ -75,7 +75,8 @@ def open_episode(conn: psycopg.Connection, as_of: date | None = None) -> Episode
     if r["return_started_on"] and ends_on:
         from app.health.state import extend_for_trips
         trips = conn.execute(
-            """select start_date, end_date from travel where end_date >= %s""", (r["return_started_on"],)).fetchall()
+            """select start_date, end_date from travel where end_date >= %s and sports = '{}'""",
+            (r["return_started_on"],)).fetchall()
         days = {t["start_date"] + timedelta(days=i) for t in trips
                 for i in range((t["end_date"] - t["start_date"]).days + 1)}
         ends_on, paused = extend_for_trips(r["return_started_on"], ends_on, days)

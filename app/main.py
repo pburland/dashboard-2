@@ -420,6 +420,27 @@ def api_garmin_push(enabled: bool | None = Body(default=None, embed=True)) -> di
             raise HTTPException(502, f"Garmin: {type(e).__name__}: {e}"[:300])
 
 
+@app.get("/api/approval", dependencies=[Depends(require_admin)])
+def api_approval() -> dict:
+    """The week waiting for approval (next week from Sunday on), with suggested times."""
+    from app import approval, db
+    today = clock.today()
+    with db.connect() as conn:
+        return approval.preview(conn, approval.week_to_approve(today), today)
+
+
+@app.post("/api/approval", dependencies=[Depends(require_admin)])
+def api_approve(week_start: str = Body(..., embed=True)) -> dict:
+    """Approve a week: snapshot its times, then send it to Garmin and the Training calendar."""
+    from datetime import date as _date
+    from app import approval, db
+    ws = _date.fromisoformat(week_start)
+    if ws.weekday() != 0:
+        raise HTTPException(400, "week_start must be a Monday")
+    with db.connect() as conn:
+        return approval.approve(conn, ws, clock.today())
+
+
 @app.post("/api/tests/{test_id}/{choice}", dependencies=[Depends(require_admin)])
 def api_test_decision(test_id: int, choice: str) -> dict:
     """Apply a pending fitness test's zones, or keep the old ones."""
