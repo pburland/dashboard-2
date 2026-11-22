@@ -557,6 +557,31 @@ $('garminbtn').onclick = async () => {
   }
 };
 
+// ── the coming week's workouts on their own calendar (.ics feed) ────────
+$('calbtn').onclick = async () => {
+  const show = html => { $('connresult').innerHTML = `<section class="card"><div class="label">Workout calendar</div>${html}</section>`; };
+  show('<div class="muted">Loading…</div>');
+  try {
+    const {data} = await api('/api/calendar/feed');
+    show(`<p>Your planned workouts for the next ${data.days} days, on a separate "Training" calendar. It updates
+      itself when the plan changes, and it never sends alerts. Subscribe once:</p>
+      <p><b>iPhone:</b> Settings → Calendar → Accounts → Add Account → Other → Add Subscribed Calendar → paste the
+      address → Next → Save. Then in Settings → Calendar → Accounts → Subscribed Calendars → Training, set Fetch to Hourly.</p>
+      <p><b>Google Calendar</b> (on a computer): Other calendars → + → From URL → paste → Add calendar. Google refreshes
+      it a few times a day. Use one of the two, not both, or you'll see every workout twice.</p>
+      <input id="calurl" readonly value="${esc(data.url)}" style="width:100%;font-size:13px;padding:8px">
+      <button class="primary-btn" id="calcopy" style="margin-top:8px">Copy address</button>
+      <p class="muted">Keep this address to yourself: anyone with it can see your workouts.</p>`);
+    $('calcopy').onclick = async () => {
+      try { await navigator.clipboard.writeText(data.url); $('calcopy').textContent = 'Copied'; }
+      catch { $('calurl').select(); document.execCommand('copy'); $('calcopy').textContent = 'Copied'; }
+    };
+  } catch (e) {
+    if (e.auth) return showSignin('Signed out on this device. Paste your token again.');
+    show(`<div class="muted">${esc(e.why || e.message)}</div>`);
+  }
+};
+
 // ── phone notifications ─────────────────────────────────────────────────
 const NOTIF_TYPES = [['workout', 'Tomorrow\'s workout (8:30 PM)'], ['checkin', '"How was it?" after a session'],
   ['safety', 'Safety (readiness, heart rate, heat)'], ['plan', 'Plan changes and changes to confirm'],

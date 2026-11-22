@@ -115,7 +115,13 @@ To force a sync now: `curl -s -X POST -H "X-Admin-Token: $TOKEN" ".../admin/sync
   (and from there to the watch) after each morning sync and Sunday's plan, from
   Nov 23 2026. Easy sessions carry a heart-rate range. The app only changes or
   removes workouts it made itself (names start with "TC"). Turn it on or off,
-  or send now, with **Garmin workouts** at the bottom of Today.
+  or send now, with **Garmin workouts** at the bottom of Today. Only the coming 7
+  days are sent, so a re-plan never leaves weeks of stale workouts behind.
+- **Workout calendar:** the coming 7 days of workouts as a separate "Training"
+  calendar with no alerts. Bottom of Today → **Workout calendar** → copy the
+  address, then subscribe once (iPhone: Settings → Calendar → Accounts → Add
+  Account → Other → Add Subscribed Calendar; or Google Calendar → Other calendars
+  → From URL). Use one, not both. It updates itself after every re-plan.
 - **Body weight:** log morning weigh-ins in Hevy's body measurements. The
   report compares 7-day averages with the plan and adjusts daily calories in
   175 kcal steps (at most ±400) when you lose too fast or too slow two weeks

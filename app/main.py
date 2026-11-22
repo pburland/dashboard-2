@@ -420,6 +420,30 @@ def api_garmin_push(enabled: bool | None = Body(default=None, embed=True)) -> di
             raise HTTPException(502, f"Garmin: {type(e).__name__}: {e}"[:300])
 
 
+@app.get("/api/calendar/feed", dependencies=[Depends(require_admin)])
+def api_calendar_feed(request: Request) -> dict:
+    """The address of the workout calendar feed, for subscribing once."""
+    from app import calendar_feed
+    s = load_settings()
+    base = s.public_base_url or str(request.base_url).rstrip("/")
+    return {"url": f"{base}/calendar/{calendar_feed.key(s.admin_token)}/training.ics",
+            "days": calendar_feed.DAYS}
+
+
+@app.get("/calendar/{key}/training.ics", include_in_schema=False)
+def calendar_feed_ics(key: str) -> Response:
+    """The coming week's workouts as .ics. The key in the address is the only access check,
+    because calendar apps can't send a header; it is derived from ADMIN_TOKEN, not the token."""
+    from app import calendar_feed, db
+    token = load_settings().admin_token
+    if not token or not hmac.compare_digest(key, calendar_feed.key(token)):
+        raise HTTPException(404, "not found")
+    with db.connect() as conn:
+        body = calendar_feed.build(conn, clock.today())
+    return Response(body, media_type="text/calendar; charset=utf-8",
+                    headers={"Cache-Control": "no-store", "Content-Disposition": 'inline; filename="training.ics"'})
+
+
 @app.post("/admin/report", dependencies=[Depends(require_admin)])
 def admin_report(week: str | None = Query(default=None, description="Monday, YYYY-MM-DD; default last week")) -> dict:
     """Write (or rewrite) a weekly report and re-plan the next 3 weeks."""

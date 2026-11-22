@@ -86,7 +86,10 @@ def _planned(conn, start: date, end: date) -> list[dict]:
              and sport = any(%s) order by plan_date, id""", (start, end, list(SPORTS))).fetchall()
 
 
-def sync(conn, today: date, days: int = 14, client=None) -> dict:
+DAYS = 7                               # only the coming week; re-plans change anything further out
+
+
+def sync(conn, today: date, days: int = DAYS, client=None) -> dict:
     """Make the Garmin calendar match the plan from ``today`` for ``days`` days."""
     cfg = settings(conn)
     out = {"created": 0, "updated": 0, "removed": 0, "unchanged": 0, "errors": []}
