@@ -214,7 +214,7 @@ def skip(conn, planned_workout_id: int, reason: str | None, today: date) -> dict
         raise ValueError(f"this session is already {r['status']}")
     why = f"you skipped it ({reason})" if reason else "you skipped it"
     op = changes.Op("remove", dict(r), None, reason or "", remove_status="skipped")
-    changes.write(conn, [op], changes.Checked([op], []), source="chat", reason=why)
+    changes.write(conn, [op], changes.Checked([op], []), source="checkin", reason=why)
     msg = "Marked skipped."
     if r["is_key"]:
         msg += " Tomorrow morning's check will try to fit it in later this week."

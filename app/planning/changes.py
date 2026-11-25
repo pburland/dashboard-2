@@ -12,7 +12,10 @@ Chat edits, the generator's re-plans and automatic rebases all come here:
   undo(batch)        -> restores the rows a change replaced (7 days)
 
 History is never deleted: a changed row is marked 'superseded' (or
-'skipped' when removed) and a new row is inserted.
+'skipped' when removed) and a new row is inserted. A removal paired with an
+addition on the same day in one change (a substitution) marks the removed row
+'replaced' with links both ways, so it isn't counted as missed. Every touched
+row carries structure.changed_by (who, when, why, batch).
 """
 from __future__ import annotations
 
@@ -65,11 +68,11 @@ class Checked:
 
 
 # ── rows ─────────────────────────────────────────────────────────────────
-def _row(conn, wid: int) -> dict:
+def _row(conn, wid: int, allow: tuple = ("planned",)) -> dict:
     r = conn.execute("select * from planned_workouts where id = %s", (wid,)).fetchone()
     if not r:
         raise ChangeError(f"workout {wid} doesn't exist")
-    if r["status"] not in ("planned",):
+    if r["status"] not in allow:
         raise ChangeError(f"'{r['title']}' on {r['plan_date']:%a %b %-d} is {r['status']}; only planned sessions can change")
     return dict(r)
 
@@ -109,7 +112,10 @@ def resolve(conn, actions: list[dict], today: date) -> list[Op]:
             ops.append(Op("swap", ra, _copy(ra, plan_date=rb["plan_date"])))
             ops.append(Op("swap", rb, _copy(rb, plan_date=ra["plan_date"])))
         elif kind == "remove":
-            ops.append(Op("remove", _row(conn, int(a["workout_id"])), None, a.get("reason") or ""))
+            # A skipped or replaced session can be cleared when Patrick asks (hidden, still in the log).
+            r = _row(conn, int(a["workout_id"]), allow=("planned", "skipped", "replaced"))
+            ops.append(Op("remove", r, None, a.get("reason") or "",
+                          remove_status="skipped" if r["status"] == "planned" else "superseded"))
         elif kind == "modify":
             r = _row(conn, int(a["workout_id"]))
             changes = {k: a[k] for k in EDITABLE_FIELDS if k in a}
@@ -301,7 +307,7 @@ def apply(conn, proposal_id: str, accepted_warns: list[str], today: date) -> dic
         raise ChangeError(f"this proposal is {p['status']}")
     for wid, fp in (p["base"] or {}).items():
         cur = conn.execute("select * from planned_workouts where id = %s", (int(wid),)).fetchone()
-        if not cur or fingerprint(dict(cur)) != fp or cur["status"] != "planned":
+        if not cur or fingerprint(dict(cur)) != fp:       # the fingerprint includes the status
             conn.execute("update plan_proposals set status = 'stale', decided_at = now() where id = %s", (proposal_id,))
             conn.commit()
             if p["source"] != "chat":
@@ -335,7 +341,12 @@ def apply(conn, proposal_id: str, accepted_warns: list[str], today: date) -> dic
     conn.execute("update plan_proposals set status = 'applied', plan_change_batch = %s, decided_at = now() "
                  "where id = %s", (batch, proposal_id))
     conn.commit()
-    return {"applied": True, "batch_id": batch, "changes": describe(ops)}
+    from app.integrations import garmin_push
+    garmin_push.sync_soon()
+    return {"applied": True, "batch_id": batch, "changes": describe(ops),
+            "where": "Today and the Plan tab show it now. Garmin updates within about a minute if the week is "
+                     "approved. The Training calendar picks it up on its next refresh (hourly on iPhone, a few "
+                     "hours in Google Calendar)."}
 
 
 def cancel(conn, proposal_id: str) -> None:
@@ -380,11 +391,20 @@ def write(conn, ops: list[Op], checked: Checked, *, source: str, reason: str,
     phases = db.load_phases(conn)
     batch = conn.execute("select gen_random_uuid() as u").fetchone()["u"]
     stamp = datetime.now(timezone.utc).date().isoformat()
+    who = {"chat": "you (Coach chat)", "checkin": "you (Didn't do it)", "system": "auto-rebase",
+           "generator": "planner", "coach": "coach"}[source]
+    stamp_by = {"by": who, "on": stamp, "reason": reason, "batch": str(batch)}
+    removed: dict[int, dict] = {}                 # row id -> its op, for substitutions
+    added: dict[date, list[int]] = {}
     for op in ops:
         before = op.before
         if before:
-            conn.execute("update planned_workouts set status = %s where id = %s",
-                         (op.remove_status if op.action == "remove" else "superseded", before["id"]))
+            conn.execute("""update planned_workouts set status = %s,
+                              structure = coalesce(structure, '{}'::jsonb) || %s::jsonb where id = %s""",
+                         (op.remove_status if op.action == "remove" else "superseded",
+                          json.dumps({"changed_by": stamp_by | ({"note": op.note} if op.note else {})}), before["id"]))
+            if op.action == "remove" and op.remove_status == "skipped":
+                removed[before["id"]] = before
         after_row = None
         if op.after:
             r = dict(op.after)
@@ -393,9 +413,7 @@ def write(conn, ops: list[Op], checked: Checked, *, source: str, reason: str,
             except NoPhaseDefined:
                 r["phase_id"] = None
             st = dict(r.get("structure") or {})
-            st["changed_by"] = {"by": {"chat": "you", "system": "auto-rebase", "generator": "planner",
-                                       "coach": "coach"}[source], "on": stamp, "reason": reason,
-                                "batch": str(batch)}
+            st["changed_by"] = dict(stamp_by)
             if before and (before.get("structure") or {}).get("gen_key") and "gen_key" not in st:
                 st["gen_key"] = before["structure"]["gen_key"]
             if source == "generator" and op.action != "move":
@@ -417,6 +435,18 @@ def write(conn, ops: list[Op], checked: Checked, *, source: str, reason: str,
             (batch, op.action, d, json.dumps(_jsonable(before or {})), json.dumps(_jsonable(dict(after_row) if after_row else {})),
              reason + (f" ({op.note})" if op.note else ""), json.dumps(_jsonable(fl)),
              json.dumps(_jsonable([f["key"] for f in accepted or []])), source))
+        if after_row and op.action == "add":
+            added.setdefault(after_row["plan_date"], []).append(after_row["id"])
+    # A substitution: removed and added on the same day in one change -> 'replaced', linked both ways.
+    for rid, r in removed.items():
+        news = added.get(r["plan_date"])
+        if not news:
+            continue
+        conn.execute("""update planned_workouts set status = 'replaced',
+                          structure = structure || %s::jsonb where id = %s""", (json.dumps({"replaced_by": news}), rid))
+        for nid in news:
+            conn.execute("update planned_workouts set structure = structure || %s::jsonb where id = %s",
+                         (json.dumps({"replaces": rid}), nid))
     return str(batch)
 
 

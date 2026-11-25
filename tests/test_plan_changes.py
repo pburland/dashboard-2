@@ -44,7 +44,7 @@ def test_move_easy_run_applies_with_audit(conn):
                         "from planned_workouts where title = 'Easy run' and plan_date >= %s order by id", (WS,)).fetchall()
     assert [(x["plan_date"], x["status"]) for x in rows] == [(WS + timedelta(days=1), "superseded"),
                                                              (WS + timedelta(days=3), "planned")]
-    assert rows[1]["by"] == "you"
+    assert rows[1]["by"] == "you (Coach chat)" and rows[0]["by"] == "you (Coach chat)"
     audit = conn.execute("select action, reason, source from plan_changes").fetchall()
     assert audit == [{"action": "move", "reason": "meeting Tuesday", "source": "chat"}]
 
@@ -126,3 +126,49 @@ def test_chat_cannot_apply_in_the_same_turn_and_undo_restores(conn):
     live = conn.execute("select plan_date from planned_workouts where status = 'planned' and plan_date >= %s",
                         (WS,)).fetchall()
     assert live == [{"plan_date": WS + timedelta(days=1)}]
+
+
+@needs_db
+def test_substitution_marks_the_old_session_replaced_not_missed(conn):
+    """Nov 25 2026: a ride swapped for a run and Pull stayed 'skipped' on Today."""
+    from app import today as view
+    from app.planning import changes
+    d = WS + timedelta(days=2)
+    for k in (0, 1, 3, 4, 5, 6):                              # a normal week around it
+        _add(conn, WS + timedelta(days=k), "run", "Easy run", 45, 4)
+    ride = _add(conn, d, "bike", "Easy ride (Z2)", 35)
+    p = changes.propose(conn, [{"action": "remove", "workout_id": ride, "reason": "no bike in Connecticut"},
+                               {"action": "add", "plan_date": str(d), "sport": "run", "title": "Easy run/walk",
+                                "duration_min": 35},
+                               {"action": "add", "plan_date": str(d), "sport": "strength", "title": "Strength: Pull",
+                                "duration_min": 35}], source="chat", reason="no bike on the trip", today=TODAY)
+    r = changes.apply(conn, p["proposal_id"], [], TODAY)
+    assert r["applied"] and "Garmin" in r["where"]
+    old = conn.execute("select status, structure from planned_workouts where id = %s", (ride,)).fetchone()
+    news = conn.execute("select id, structure from planned_workouts where plan_date = %s and status = 'planned' "
+                        "order by id", (d,)).fetchall()
+    assert old["status"] == "replaced" and old["structure"]["replaced_by"] == [n["id"] for n in news]
+    assert all(n["structure"]["replaces"] == ride for n in news)
+    assert old["structure"]["changed_by"]["by"] == "you (Coach chat)" and "no bike" in old["structure"]["changed_by"]["note"]
+    # Left out of the weekly report's planned/missed count.
+    from app import reports
+    s = reports.summarize(conn, WS)
+    assert not any(m.get("title") == "Easy ride (Z2)" for m in s.get("missed", []))
+    assert view.build(conn, d)["sessions"]                     # Today still loads (the UI hides replaced)
+
+
+@needs_db
+def test_a_skipped_session_can_be_cleared_and_checkin_skips_are_labelled(conn):
+    from app import checkins
+    from app.planning import changes
+    d = WS + timedelta(days=1)
+    rid = _add(conn, d, "bike", "Easy ride (Z2)", 35)
+    checkins.skip(conn, rid, "busy", TODAY)
+    row = conn.execute("select status, structure from planned_workouts where id = %s", (rid,)).fetchone()
+    assert row["status"] == "skipped" and row["structure"]["changed_by"]["by"] == "you (Didn't do it)"
+    assert conn.execute("select source from plan_changes order by id desc limit 1").fetchone()["source"] == "checkin"
+    p = changes.propose(conn, [{"action": "remove", "workout_id": rid, "reason": "clear it from Today"}],
+                        source="chat", reason="clear it", today=TODAY)
+    assert changes.apply(conn, p["proposal_id"], [], TODAY)["applied"]
+    assert conn.execute("select status from planned_workouts where id = %s", (rid,)).fetchone()["status"] == "superseded"
+    assert conn.execute("select count(*) n from plan_changes where action = 'remove'").fetchone()["n"] == 2

@@ -154,10 +154,17 @@ function sessionCard(s) {
     <div class="wk-title">${esc(s.title)}</div>${big ? `<div class="wk-big">${big}</div>` : ''}${body}</section>`;
 }
 
+// A session taken off the plan: one muted line saying what happened and why.
+function offText(s) {
+  const by = s.structure?.changed_by, why = by?.note || by?.reason;
+  if (s.status === 'replaced') return `${s.title} was swapped out${why ? ` (${why})` : ''}.`;
+  return `${s.title}: skipped${why ? ` (${why})` : ''}.`;
+}
+
 function next4(days) {
   return days.map(d => `<div class="n4">
     <div class="n4d"><span>${fmt(d.date, {weekday: 'short'})}</span><b>${fmt(d.date, {day: 'numeric'})}</b></div>
-    <div class="n4s">${d.sessions.map(s => {
+    <div class="n4s">${d.sessions.filter(s => !['skipped', 'replaced'].includes(s.status)).map(s => {
       if (s.suppressed) return '<div class="n4row"><span class="kbar" style="background:var(--red)"></span><div><div class="n4t">Health hold</div></div></div>';
       const [kname, color] = KIND[kindOf(s)];
       const meta = [s.distance_mi != null ? `${s.distance_mi} mi` : '', s.duration_min ? `${Math.round(s.duration_min)} min` : ''].filter(Boolean).join(' · ');
@@ -226,7 +233,11 @@ function wireProposals(root) {
       btn.disabled = true;
       try {
         const r = await post(`/api/plan/proposals/${id}/apply`, {accepted_warns: boxes.map(b => b.value)}, 30000);
-        if (r.applied) el.innerHTML = `<div class="label">Done</div>${(r.changes || []).map(c => `<div>${esc(c)}</div>`).join('')}`;
+        if (r.applied) {
+          el.innerHTML = `<div class="label">Done</div>${(r.changes || []).map(c => `<div>${esc(c)}</div>`).join('')}${r.where ? `<div class="n4m" style="margin-top:6px">${esc(r.where)}</div>` : ''}`;
+          setTimeout(start, 400);
+          if (!$('plan').hidden) renderPlan();
+        }
         else if (r.stale) el.outerHTML = proposalCard(r.new_proposal), wireProposals(root);
         else el.querySelector('.prop-msg').textContent = (r.flags || []).map(f => f.message).join(' ') || 'Not applied.';
       } catch (e) { el.querySelector('.prop-msg').textContent = e.message; btn.disabled = false; }
@@ -358,7 +369,9 @@ function renderToday(t, cached) {
       <div class="days">${r.days_until}<small>days</small></div>
       <div class="name">${esc(r.name.replace('IRONMAN ', 'IM '))}</div>
       <div class="meta">${r.goal_time ? 'Goal ' + esc(hm(r.goal_time)) : 'Goal: finish strong'}${r.stretch_time ? ' · stretch ' + esc(hm(r.stretch_time)) : ''}</div></div>`).join('');
-  const sessions = t.sessions.filter(s => !s.suppressed);
+  const OFF = ['skipped', 'replaced'];
+  const sessions = t.sessions.filter(s => !s.suppressed && !OFF.includes(s.status));
+  const offLine = t.sessions.filter(s => OFF.includes(s.status)).map(offText).join(' ');
   let todayHtml = statusLine(t.health, t.phase) + checkinCard(t.pending_checkin)
     + (t.proposals || []).map(p => `<section class="card">${proposalCard(p)}</section>`).join('');
   if (!t.health.prescriptions_allowed) {
@@ -368,6 +381,7 @@ function renderToday(t, cached) {
   } else if (sessions.length) {
     todayHtml += sessions.map(sessionCard).join('');
     if (!sessions.some(s => s.sport === 'strength')) todayHtml += '<div class="none-line"><b>No lifting today.</b></div>';
+    if (offLine) todayHtml += `<div class="none-line muted">${esc(offLine)}</div>`;
   } else {
     todayHtml += '<section class="card workout" style="--accent:var(--muted)"><div class="label">Today</div><div class="wk-title">Rest day</div></section>';
   }
@@ -627,6 +641,10 @@ $('compose').onsubmit = async e => {
     thinking.classList.remove('thinking');
     thinking.innerHTML = md(r.reply) + actsHtml(r.actions);
     wireProposals($('chatlog'));
+    if ((r.actions || []).some(a => a.tool === 'apply_change' && a.result && a.result.applied)) {
+      start();                                            // the plan changed: redraw Today now
+      if (!$('plan').hidden) renderPlan();
+    }
   } catch (err) {
     if (err.auth) return showSignin('Signed out on this device. Paste your token again.');
     thinking.classList.remove('thinking');

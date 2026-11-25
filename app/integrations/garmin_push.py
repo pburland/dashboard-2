@@ -166,3 +166,18 @@ def sync(conn, today: date, days: int = DAYS, client=None) -> dict:
     if persist:
         persist()
     return out
+
+
+def sync_soon() -> None:
+    """After a plan change: bring Garmin up to date in the background (own connection),
+    instead of waiting for the next morning's sync. Never raises."""
+    import threading
+
+    def run():
+        try:
+            from app import clock, db
+            with db.connect() as conn:
+                log.info("garmin push after a plan change: %s", sync(conn, clock.today()))
+        except Exception as e:                    # the morning sync will catch up
+            log.info("garmin push after a plan change skipped: %s", e)
+    threading.Thread(target=run, name="garmin-push", daemon=True).start()

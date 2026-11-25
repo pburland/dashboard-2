@@ -24,7 +24,7 @@ def summarize(conn, ws: date) -> dict:
         """select w.plan_date, w.sport, w.title, w.distance_mi, w.duration_min, w.status, w.activity_id,
                   w.is_long, a.distance_m as act_m
            from planned_workouts w left join activities a on a.id = w.activity_id
-           where w.plan_date between %s and %s and w.status <> 'superseded' order by w.plan_date""",
+           where w.plan_date between %s and %s and w.status not in ('superseded', 'replaced') order by w.plan_date""",
         (ws, we)).fetchall()
     acts = conn.execute(
         """select local_date, sport, title, distance_m, duration_s, avg_hr, decoupling, load_trimp

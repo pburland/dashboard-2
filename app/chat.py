@@ -70,14 +70,18 @@ TOOLS = [
     {"name": "propose_change",
      "description": "Validate a plan change and hold it for Patrick's confirmation. Writes nothing. "
                     "Actions: move {workout_id, to}, swap {workout_id_a, workout_id_b}, remove {workout_id, reason}, "
-                    "modify {workout_id, + fields to change}, add {plan_date, sport, title, duration_min, ...}.",
+                    "modify {workout_id, + fields to change}, add {plan_date, sport, title, duration_min, ...}. "
+                    "To substitute, remove the old session and add the new ones on the same day in ONE proposal: "
+                    "the old one is marked replaced (not missed). remove also clears a skipped or replaced "
+                    "session from Today when he asks (it stays in the change log).",
      "input_schema": {"type": "object", "properties": {
          "actions": {"type": "array", "items": ACTION_SCHEMA},
          "reason": {"type": "string", "description": "Why, in Patrick's words (e.g. 'dinner Saturday')."}},
          "required": ["actions", "reason"]}},
     {"name": "apply_change",
      "description": "Apply a proposal Patrick explicitly confirmed in a later message. Pass the keys of "
-                    "every warning he accepted. Fails if the plan changed or a rule now blocks it.",
+                    "every warning he accepted. Fails if the plan changed or a rule now blocks it. After it "
+                    "applies, tell him where it shows, using the result's 'where' text.",
      "input_schema": {"type": "object", "properties": {
          "proposal_id": {"type": "string"},
          "accepted_warns": {"type": "array", "items": {"type": "string"}}}, "required": ["proposal_id"]}},
@@ -263,6 +267,7 @@ def _brief_session(s: dict) -> dict:
     return {k: v for k, v in {
         "title": s.get("title"), "sport": s.get("sport"), "mi": s.get("distance_mi"),
         "min": s.get("duration_min"), "zone": s.get("max_zone"), "status": s.get("status"),
+        "changed_by": st.get("changed_by"), "replaced_by": st.get("replaced_by"), "replaces": st.get("replaces"),
         "brief": st.get("brief"), "preview": st.get("preview"), "provisional": st.get("provisional"),
         "best_time": (s.get("best_time") or {}).get("label"), "why_then": (s.get("best_time") or {}).get("why"),
         "actual": s.get("actual"), "flags": st.get("flags")}.items() if v not in (None, [], {})}
