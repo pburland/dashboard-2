@@ -138,10 +138,26 @@ def create_session(response: Response, token: str = Body(..., embed=True)) -> di
 
 
 @app.get("/healthz")
-def healthz() -> dict:
-    return {"ok": True, "today": clock.today().isoformat(), "now": clock.now().isoformat(),
-            "database": {k: v for k, v in MIGRATIONS.items() if k != "applied"}
-                        | {"applied_now": len(MIGRATIONS.get("applied", []))}}
+def healthz(db: int = 0) -> dict:
+    """Liveness; with ?db=1 also a real round trip through the connection pool
+    (no personal data: timing and pool counters only)."""
+    out = {"ok": True, "today": clock.today().isoformat(), "now": clock.now().isoformat(),
+           "database": {k: v for k, v in MIGRATIONS.items() if k != "applied"}
+                       | {"applied_now": len(MIGRATIONS.get("applied", []))}}
+    if db:
+        from app import db as _db
+        t0 = time.perf_counter()
+        try:
+            stats = _db._get_pool().get_stats()
+            out["pool"] = {k: stats.get(k) for k in ("pool_size", "pool_available", "requests_waiting",
+                                                     "requests_errors", "connections_lost", "requests_num")}
+            with _db._get_pool().connection(timeout=5) as conn:
+                conn.execute("select 1").fetchone()
+            out["db_roundtrip_ms"] = round((time.perf_counter() - t0) * 1000)
+        except Exception as e:
+            out["ok"] = False
+            out["db_error"] = f"{type(e).__name__}: {e}"[:200]
+    return out
 
 
 @app.get("/api/state", dependencies=[Depends(require_admin)])

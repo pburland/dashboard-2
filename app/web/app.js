@@ -107,7 +107,8 @@ $('tokbtn').onclick = async () => {
     if (r.status === 401) { $('tokerr').textContent = 'That token was rejected.'; return; }
     if (!r.ok) { $('tokerr').textContent = `Server error ${r.status}. Try again.`; return; }
     try { localStorage.removeItem(TOKEN_KEY); } catch {}
-    $('tok').value = ''; $('tokerr').textContent = '';
+    $('tok').value = ''; $('tokerr').textContent = 'Signed in. Loading…';
+    justSignedIn = true;
     start();
   } catch { $('tokerr').textContent = "Can't reach the server."; }
   finally { $('tokbtn').disabled = false; }
@@ -877,14 +878,14 @@ async function refreshAll() {
 $('refresh').onclick = refreshAll;
 
 // ── start ───────────────────────────────────────────────────────────────
-let starting = false;
+let starting = false, justSignedIn = false;
 async function start() {
   if (starting) return;
   starting = true;
   try {
     const qs = new URLSearchParams(location.search);
     const {data, cached, why} = await api('/api/today' + (qs.get('checkin') ? `?checkin=${encodeURIComponent(qs.get('checkin'))}` : ''));
-    $('signin').hidden = true; $('app').hidden = false;
+    $('signin').hidden = true; $('app').hidden = false; justSignedIn = false;
     $('hdrdate').dataset.iso = String(data.today);
     renderToday(data, cached);
     if (!cached) loadApproval();
@@ -898,7 +899,12 @@ async function start() {
     }
     else if (lastLoadMs != null) $('sync').textContent += ` · loaded in ${(lastLoadMs / 1000).toFixed(1)}s`;
   } catch (e) {
-    if (e.auth) return showSignin('');
+    if (e.auth) {
+      const msg = justSignedIn ? "Your password was accepted, but this browser didn't keep the sign-in. Allow cookies for this site (or turn off strict tracking protection) and try again." : '';
+      justSignedIn = false;
+      return showSignin(msg);
+    }
+    justSignedIn = false;
     $('signin').hidden = true; $('app').hidden = false;
     $('today').innerHTML = errorCard('Today', e.why || e.message);
   } finally {
