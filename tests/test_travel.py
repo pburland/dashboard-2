@@ -31,3 +31,20 @@ def test_today_follows_the_trip():
     assert travel.tz_for_now(STOPS, datetime(2026, 11, 23, 23, 0, tzinfo=UTC)) == "America/New_York"
     # Morning of Nov 23 in Osaka (Nov 22 evening at home): Osaka.
     assert travel.tz_for_now(STOPS, datetime(2026, 11, 22, 23, 0, tzinfo=UTC)) == "Asia/Tokyo"
+
+
+def test_clock_never_waits_on_a_busy_pool(monkeypatch):
+    """A refresh that can't get a connection keeps the old stops and doesn't block."""
+    import time as _t
+    from app import db, travel
+
+    class Busy:
+        def connection(self, timeout=None):
+            raise TimeoutError("pool busy")
+    monkeypatch.setattr(db, "_get_pool", lambda: Busy())
+    monkeypatch.setitem(travel._CACHE, "stops", [{"place": "old"}])
+    monkeypatch.setitem(travel._CACHE, "at", float("-inf"))
+    t0 = _t.monotonic()
+    assert travel.cached_stops() == [{"place": "old"}]
+    assert _t.monotonic() - t0 < 1 and not travel._CACHE["refreshing"]
+    assert travel.cached_stops() == [{"place": "old"}]          # no retry storm: waits 30 s

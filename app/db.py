@@ -30,7 +30,7 @@ def _get_pool() -> ConnectionPool:
             if not url:
                 raise MissingConfig("SUPABASE_DB_URL")
             _pool = ConnectionPool(
-                url, min_size=1, max_size=6, timeout=15, max_idle=240, open=True,
+                url, min_size=1, max_size=10, timeout=15, max_idle=240, open=True,
                 kwargs={"row_factory": dict_row, "connect_timeout": 10},
                 check=ConnectionPool.check_connection, name="training")
         return _pool

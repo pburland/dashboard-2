@@ -59,22 +59,36 @@ def load(conn) -> list[dict]:
 
 
 # In-memory copy for the clock, which must not hit the database each call.
-_CACHE: dict = {"stops": [], "at": 0.0}
+_CACHE: dict = {"stops": [], "at": float("-inf"), "refreshing": False}
 _LOCK = threading.Lock()
 TTL_S = 600
 
 
 def cached_stops() -> list[dict]:
+    """Never blocks the caller on the database: one thread refreshes (asking the
+    pool for at most 2 s, outside the lock), everyone else gets the last copy.
+    Holding the lock while waiting for a pooled connection used to stall every
+    request that asked for today's date whenever the pool was busy."""
     with _LOCK:
-        if time.monotonic() - _CACHE["at"] > TTL_S:
-            _CACHE["at"] = time.monotonic()      # on failure, retry after the TTL
-            try:
-                from app import db
-                with db.connect() as conn:
-                    _CACHE["stops"] = load(conn)
-            except Exception:
-                pass
-        return _CACHE["stops"]
+        stale = time.monotonic() - _CACHE["at"] > TTL_S and not _CACHE.get("refreshing")
+        if stale:
+            _CACHE["refreshing"] = True
+        stops = _CACHE["stops"]
+    if not stale:
+        return stops
+    try:
+        from app import db
+        with db._get_pool().connection(timeout=2) as conn:
+            stops = load(conn)
+        with _LOCK:
+            _CACHE["stops"], _CACHE["at"] = stops, time.monotonic()
+    except Exception:
+        with _LOCK:
+            _CACHE["at"] = time.monotonic() - TTL_S + 30     # try again in 30 s, keep the old copy
+    finally:
+        with _LOCK:
+            _CACHE["refreshing"] = False
+    return _CACHE["stops"]
 
 
 def current_tz() -> str:
