@@ -391,8 +391,8 @@ def write(conn, ops: list[Op], checked: Checked, *, source: str, reason: str,
     phases = db.load_phases(conn)
     batch = conn.execute("select gen_random_uuid() as u").fetchone()["u"]
     stamp = datetime.now(timezone.utc).date().isoformat()
-    who = {"chat": "you (Coach chat)", "checkin": "you (Didn't do it)", "system": "auto-rebase",
-           "generator": "planner", "coach": "coach"}[source]
+    who = {"chat": "you (Coach chat)", "checkin": "you (Didn't do it)", "swap": "you (Swap button)",
+           "system": "auto-rebase", "generator": "planner", "coach": "coach"}[source]
     stamp_by = {"by": who, "on": stamp, "reason": reason, "batch": str(batch)}
     removed: dict[int, dict] = {}                 # row id -> its op, for substitutions
     added: dict[date, list[int]] = {}

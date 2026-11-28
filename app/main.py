@@ -444,6 +444,30 @@ def api_garmin_push(enabled: bool | None = Body(default=None, embed=True)) -> di
             raise HTTPException(502, f"Garmin: {type(e).__name__}: {e}"[:300])
 
 
+@app.get("/api/swap/{workout_id}", dependencies=[Depends(require_admin)])
+def api_swap_options(workout_id: int) -> dict:
+    """Ready-made alternatives for a planned session that pass every check."""
+    from app import db
+    from app.planning import changes, swap
+    with db.connect() as conn:
+        try:
+            return swap.options(conn, workout_id, clock.today())
+        except changes.ChangeError as e:
+            raise HTTPException(409, str(e))
+
+
+@app.post("/api/swap/{workout_id}", dependencies=[Depends(require_admin)])
+def api_swap_apply(workout_id: int, key: str = Body(..., embed=True)) -> dict:
+    """Apply one swap option (the tap is the confirmation)."""
+    from app import db
+    from app.planning import changes, swap
+    with db.connect() as conn:
+        try:
+            return swap.apply(conn, workout_id, key, clock.today())
+        except changes.ChangeError as e:
+            raise HTTPException(409, str(e))
+
+
 @app.get("/api/approval", dependencies=[Depends(require_admin)])
 def api_approval() -> dict:
     """The week waiting for approval (next week from Sunday on), with suggested times."""
@@ -476,6 +500,52 @@ def api_test_decision(test_id: int, choice: str) -> dict:
     if not row:
         raise HTTPException(409, "that test isn't waiting for a decision")
     return {"ok": True, "status": row["status"]}
+
+
+def require_audit(x_audit_key: str | None = Header(default=None),
+                  x_admin_token: str | None = Header(default=None),
+                  training_token: str | None = Cookie(default=None)) -> None:
+    """The audit agent's read-only key, or Patrick himself (header or app cookie)."""
+    from app import audit
+    token = load_settings().admin_token
+    if not token:
+        raise HTTPException(503, "ADMIN_TOKEN is not configured")
+    if x_audit_key and hmac.compare_digest(x_audit_key, audit.key(token)):
+        return
+    _check_token(x_admin_token or training_token)
+
+
+@app.get("/api/audit/key", dependencies=[Depends(require_admin)])
+def api_audit_key() -> dict:
+    """The audit agent's read-only key, for the one-time setup form."""
+    from app import audit
+    return {"header": "X-Audit-Key", "key": audit.key(load_settings().admin_token),
+            "host": (load_settings().public_base_url or "").replace("https://", "")}
+
+
+@app.get("/admin/audit/snapshot", dependencies=[Depends(require_audit)])
+def admin_audit_snapshot() -> dict:
+    from app import audit, db
+    with db.connect() as conn:
+        return audit.snapshot(conn, clock.today())
+
+
+@app.get("/admin/audit/reports", dependencies=[Depends(require_audit)])
+def admin_audit_reports() -> list:
+    from app import audit, db
+    with db.connect() as conn:
+        return audit.reports(conn)
+
+
+@app.post("/admin/audit/reports", dependencies=[Depends(require_audit)])
+def admin_audit_save(title: str = Body(...), summary: str = Body(...), findings: list = Body(default=[]),
+                     followups: list = Body(default=[])) -> dict:
+    from app import audit, db
+    with db.connect() as conn:
+        try:
+            return audit.save(conn, title, summary, findings, followups)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
 
 
 @app.get("/api/calendar/feed", dependencies=[Depends(require_admin)])

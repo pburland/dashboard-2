@@ -148,11 +148,40 @@ function sessionCard(s) {
   if (s.notes) body += `<div class="note">${esc(s.notes)}</div>`;
   if (s.flags?.length) body += s.flags.map(f => `<div class="flagline"><span class="pill ${f.severity === 'stop' ? 'stop' : 'warn'}">${f.severity === 'stop' ? '✕' : '▲'} ${esc(f.kind.replace(/_/g, ' '))}</span><span>${esc(f.message)}</span></div>`).join('');
   if (s.status !== 'done') body += whenLine(s);
+  if (s.status === 'planned' && s.id) body += `<div class="swap" data-swap="${s.id}"><button class="ghost-btn swap-btn">⇄ Swap</button><div class="swap-opts"></div></div>`;
   const done = s.status === 'done' ? ' <span class="done-chip">✓ done</span>' : '';
   return `<section class="card workout" style="--accent:${color}">
     <div class="label"><span class="kdot" style="background:${color}"></span>Today · ${kname}${done}</div>
     <div class="wk-title">${esc(s.title)}</div>${big ? `<div class="wk-big">${big}</div>` : ''}${body}</section>`;
 }
+
+// ── Swap: ready-made alternatives, checked by the app, one tap to apply ──
+document.addEventListener('click', async e => {
+  const btn = e.target.closest('.swap-btn');
+  if (btn) {
+    const box = btn.closest('[data-swap]'), opts = box.querySelector('.swap-opts');
+    if (opts.dataset.open) { opts.innerHTML = ''; delete opts.dataset.open; return; }
+    opts.dataset.open = '1'; opts.innerHTML = '<div class="n4m">Finding options that fit…</div>';
+    try {
+      const {data} = await api(`/api/swap/${box.dataset.swap}`);
+      opts.innerHTML = data.options.length ? data.options.map(o => `<button class="swap-opt" data-key="${esc(o.key)}">${esc(o.label)}
+          ${o.warnings.length ? `<small class="warn-t">▲ ${esc(o.warnings[0])}</small>` : ''}</button>`).join('')
+        : '<div class="n4m">Nothing else fits today. Ask Coach for ideas.</div>';
+    } catch (err) { opts.innerHTML = `<div class="n4m">${esc(err.why || err.message)}</div>`; }
+    return;
+  }
+  const opt = e.target.closest('.swap-opt');
+  if (opt) {
+    const box = opt.closest('[data-swap]'), opts = box.querySelector('.swap-opts');
+    opts.querySelectorAll('button').forEach(b => b.disabled = true);
+    try {
+      const r = await post(`/api/swap/${box.dataset.swap}`, {key: opt.dataset.key}, 30000);
+      opts.innerHTML = r.applied ? `<div class="n4m">Done: ${esc(r.label)}. ${esc(r.where || '')}</div>`
+                                 : `<div class="n4m">${esc(r.message || 'Not applied.')}</div>`;
+      if (r.applied) { setTimeout(start, 900); if (!$('plan').hidden) renderPlan(); }
+    } catch (err) { opts.innerHTML = `<div class="n4m">${esc(err.why || err.message)}</div>`; }
+  }
+});
 
 // A session taken off the plan: one muted line saying what happened and why.
 function offText(s) {
@@ -584,7 +613,21 @@ async function renderReports() {
         <div class="meta"><span class="pill blue">${esc(s.completed_sessions ?? 0)}/${esc(s.planned_sessions ?? 0)} sessions</span>
         <span class="pill blue">${esc(s.actual_run_mi ?? 0)} run mi</span>${pill}</div>${md(r.narrative)}</section>`;
     }).join('');
+    loadAudits();
   } catch (e) { if (e.auth) return showSignin('Signed out on this device. Paste your token again.'); $('reports').innerHTML = errorCard('Reports', e.why || e.message); }
+}
+
+// Monthly audit reports: read-only findings; nothing changes until Patrick says so.
+async function loadAudits() {
+  try {
+    const {data} = await api('/admin/audit/reports');
+    if (!data.length) return;
+    $('reports').insertAdjacentHTML('beforeend', `<div class="weekhdr">Monthly audits</div>` + data.map(a => `
+      <details class="details-card"><summary><b>${esc(a.title)}</b> · ${esc(fmt(a.created_at, {month: 'short', day: 'numeric', year: 'numeric'}))}
+        ${a.findings?.length ? ` · ${a.findings.length} finding${a.findings.length === 1 ? '' : 's'}` : ''}</summary>
+        <div style="margin-top:8px">${md(a.summary)}</div>
+        <div class="n4m">Nothing in an audit changes the app by itself. Tell Claude which items to do.</div></details>`).join(''));
+  } catch (e) { /* audits are optional */ }
 }
 
 // ── Pat-GPT ─────────────────────────────────────────────────────────────

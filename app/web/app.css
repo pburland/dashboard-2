@@ -271,3 +271,11 @@ details.pb .brief{margin:4px 0 2px}
 .season-row.past{opacity:.5}
 .season-d{flex:none;width:54px;color:var(--muted)}
 .season-i{flex:none;width:20px;text-align:center}
+
+/* swap */
+.swap{margin-top:10px}
+.swap-btn{width:auto;padding:6px 12px;font-size:13px}
+.swap-opts{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.swap-opt{background:var(--card2);border:0;border-radius:10px;color:var(--ink);font:inherit;font-size:14px;text-align:left;padding:10px 12px;cursor:pointer}
+.swap-opt small{display:block;margin-top:3px;font-size:11px}
+.warn-t{color:var(--orange)}
